@@ -1,0 +1,29 @@
+name: brainw4llet
+description: "Carteira cripto stateless e multiplataforma com derivação de chaves via Argon2id."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Versões EXATAS nos pacotes criptográficos (ver docs/AVALIACAO_SEGURANCA.md §6).
+  # libsodium 1.0.22 compilada do código-fonte assinado embutido no pacote:
+  # Argon2id, CSPRNG e memória protegida (SecureKey).
+  sodium: 4.1.2
+  # BIP-39/32/44, secp256k1, endereços. Dart puro, sem dependências.
+  blockchain_utils: 7.1.0
+  # Decomposição Unicode (NFKD/NFC) para normalização das respostas.
+  unorm_dart: 0.3.3
+  meta: ^1.15.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,26 @@
+# Build de TESTE do IPA sem assinatura, para instalar via AltStore/SideStore
+# (que reassinam com o seu Apple ID). Ver docs/AVALIACAO_SEGURANCA.md §6–7:
+# a versão que vai guardar fundos reais deve ser compilada em máquina própria.
+workflows:
+  ios-unsigned-ipa:
+    name: IPA sem assinatura (AltStore)
+    instance_type: mac_mini_m2
+    max_build_duration: 45
+    environment:
+      flutter: 3.47.8 # mesma versão usada no desenvolvimento
+      xcode: latest
+      cocoapods: default
+    triggering:
+      events: [] # só manual
+    scripts:
+      - name: Dependências (travadas pelo pubspec.lock)
+        script: flutter pub get --enforce-lockfile
+      - name: Análise estática
+        script: flutter analyze
+      - name: Testes (vetores RFC/BIP/OpenSSL, inclusive Argon2id de produção)
+        script: flutter test
+      - name: Build e empacotamento do IPA
+        script: ./tool/build_ipa.sh
+    artifacts:
+      - build/ipa/*.ipa
+      - build/ipa/*.sha256
