@@ -14,6 +14,9 @@ final class Endpoints {
     required this.solRpc,
     required this.solExplorerTx,
     required this.solExplorerSuffix,
+    this.dashInsight,
+    this.dashExplorerTx,
+    this.dashExplorerSuffix = '',
   });
 
   /// API Esplora (mempool.space).
@@ -33,6 +36,11 @@ final class Endpoints {
   final String solExplorerTx;
   final String solExplorerSuffix;
 
+  /// API Insight da Dash (só rede principal; não há testnet pública).
+  final Uri? dashInsight;
+  final String? dashExplorerTx;
+  final String dashExplorerSuffix;
+
   static Endpoints defaults(WalletNetwork network) => switch (network) {
     WalletNetwork.mainnet => Endpoints(
       btcEsplora: Uri.parse('https://mempool.space/api'),
@@ -44,6 +52,9 @@ final class Endpoints {
       solRpc: Uri.parse('https://api.mainnet-beta.solana.com'),
       solExplorerTx: 'https://solscan.io/tx/',
       solExplorerSuffix: '',
+      dashInsight: Uri.parse('https://insight.dash.org/insight-api'),
+      dashExplorerTx: 'https://chainz.cryptoid.info/dash/tx.dws?',
+      dashExplorerSuffix: '.htm',
     ),
     WalletNetwork.testnet => Endpoints(
       btcEsplora: Uri.parse('https://mempool.space/testnet4/api'),

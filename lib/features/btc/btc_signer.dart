@@ -25,16 +25,14 @@ final class BtcReviewOutput {
 /// O que vai ser assinado, recalculado a partir do próprio PSBT.
 final class BtcReview {
   const BtcReview({
+    this.coin = UtxoCoin.bitcoin,
     required this.inputsTotal,
     required this.outputs,
     required this.fee,
     required this.vsize,
   });
 
-  /// Acima disso a taxa é considerada anormal (o recorde histórico de taxa
-  /// "normal" fica bem abaixo).
-  static const int alarmingFeeRate = 300;
-
+  final UtxoCoin coin;
   final BigInt inputsTotal;
   final List<BtcReviewOutput> outputs;
   final BigInt fee;
@@ -42,8 +40,9 @@ final class BtcReview {
 
   /// Alertas para o usuário confirmar explicitamente antes de assinar.
   List<String> get warnings => [
-    if (feeRate > alarmingFeeRate)
-      'Taxa anormalmente alta: ~${feeRate.toStringAsFixed(0)} sat/vB.',
+    if (feeRate > UtxoAccount.alarmingFeeRateFor(coin))
+      'Taxa anormalmente alta: ~${feeRate.toStringAsFixed(0)} '
+          '${coin.feeUnit}.',
     if (sending > BigInt.zero && fee * BigInt.from(10) > sending)
       'A taxa passa de 10% do valor enviado.',
     if (sending == BigInt.zero)
@@ -61,9 +60,12 @@ final class BtcReview {
 abstract final class BtcSigner {
   /// Valida que todas as entradas são desta carteira e calcula valores,
   /// destino, troco e taxa sem confiar em nada além do PSBT e da seed.
-  static BtcReview review(BtcSignRequest request, SecureKey seed) {
+  static BtcReview review(UtxoSignRequest request, SecureKey seed) {
     final psbt = _parse(request);
-    final network = BtcAccount.btcNetworkFor(request.network);
+    final network = UtxoAccount.addressNetworkFor(
+      request.coin,
+      request.network,
+    );
     return seed.runUnlockedSync((bytes) {
       var inputsTotal = BigInt.zero;
       for (var i = 0; i < request.inputPaths.length; i++) {
@@ -93,17 +95,22 @@ abstract final class BtcSigner {
         throw const BtcSendException('Saídas maiores que as entradas.');
       }
       return BtcReview(
+        coin: request.coin,
         inputsTotal: inputsTotal,
         outputs: outputs,
         fee: fee,
-        vsize: BtcSend.estimateVsize(request.inputPaths.length, outputs.length),
+        vsize: UtxoAccount.estimateSizeFor(
+          request.coin,
+          request.inputPaths.length,
+          outputs.length,
+        ),
       );
     });
   }
 
   /// Assina todas as entradas e devolve a transação final pronta para
   /// transmitir.
-  static BtcSignedTransaction sign(BtcSignRequest request, SecureKey seed) {
+  static UtxoSignedTransaction sign(UtxoSignRequest request, SecureKey seed) {
     final psbt = _parse(request);
     final tx = seed.runUnlockedSync((bytes) {
       final signers = <String, PsbtDefaultSigner>{};
@@ -114,7 +121,8 @@ abstract final class BtcSigner {
           _checkSighash(input, i);
           _checkOwnership(input.scriptPubKey, bytes, request, i);
           final path = request.inputPaths[i];
-          final raw = BtcAccount.privateKeyFromSeed(
+          final raw = UtxoAccount.privateKeyFromSeed(
+            request.coin,
             bytes,
             request.network,
             path.chain,
@@ -135,7 +143,7 @@ abstract final class BtcSigner {
           ),
         );
         final tx = psbt.finalizeAll();
-        _checkFinalWitnesses(tx, [
+        _checkFinalSignatures(request.coin, tx, [
           for (final s in signers.values) s.signerPublicKey.toHex(),
         ]);
         return tx;
@@ -143,7 +151,8 @@ abstract final class BtcSigner {
         rawKeys.forEach(wipeBytes);
       }
     });
-    return BtcSignedTransaction(
+    return UtxoSignedTransaction(
+      coin: request.coin,
       network: request.network,
       txHex: tx.serialize(),
       txid: tx.txId(),
@@ -163,10 +172,24 @@ abstract final class BtcSigner {
   }
 
   /// Defesa em profundidade: cada entrada final precisa ter exatamente
-  /// [assinatura SIGHASH_ALL, chave pública desta carteira].
-  static void _checkFinalWitnesses(BtcTransaction tx, List<String> ownKeys) {
-    for (final (i, witness) in tx.witnesses.indexed) {
-      final stack = witness.stack;
+  /// [assinatura SIGHASH_ALL, chave pública desta carteira], no witness
+  /// (SegWit) ou no scriptSig (P2PKH legado do Dash).
+  static void _checkFinalSignatures(
+    UtxoCoin coin,
+    BtcTransaction tx,
+    List<String> ownKeys,
+  ) {
+    for (var i = 0; i < tx.inputs.length; i++) {
+      final List<String> stack;
+      switch (coin) {
+        case UtxoCoin.bitcoin:
+          stack = tx.witnesses[i].stack;
+        case UtxoCoin.dash:
+          if (tx.witnesses.any((w) => w.stack.isNotEmpty)) {
+            throw const BtcSendException('Dash não usa witness. Recusado.');
+          }
+          stack = [for (final item in tx.inputs[i].scriptSig.script) '$item'];
+      }
       final valid =
           stack.length == 2 &&
           BytesUtils.fromHexString(stack[0]).last ==
@@ -180,7 +203,7 @@ abstract final class BtcSigner {
     }
   }
 
-  static String _outputAddress(Script script, BitcoinNetwork network, int i) {
+  static String _outputAddress(Script script, BasedUtxoNetwork network, int i) {
     try {
       return BitcoinScriptUtils.generateAddressFromScriptPubKey(
         script,
@@ -193,7 +216,7 @@ abstract final class BtcSigner {
     }
   }
 
-  static PsbtBuilderV0 _parse(BtcSignRequest request) {
+  static PsbtBuilderV0 _parse(UtxoSignRequest request) {
     final PsbtBuilderV0 psbt;
     try {
       psbt = PsbtBuilder.fromBase64<PsbtBuilderV0>(request.psbtBase64);
@@ -210,19 +233,21 @@ abstract final class BtcSigner {
 
   static Script _scriptFor(
     List<int> seed,
-    BtcSignRequest request,
+    UtxoSignRequest request,
     BtcPath path,
   ) {
-    final raw = BtcAccount.privateKeyFromSeed(
+    final raw = UtxoAccount.privateKeyFromSeed(
+      request.coin,
       seed,
       request.network,
       path.chain,
       path.index,
     );
     try {
-      return ECPrivate.fromBytes(
-        raw,
-      ).getPublic().toSegwitAddress().toScriptPubKey();
+      return UtxoAccount.scriptForPublicKey(
+        request.coin,
+        ECPrivate.fromBytes(raw).getPublic(),
+      );
     } finally {
       wipeBytes(raw);
     }
@@ -231,7 +256,7 @@ abstract final class BtcSigner {
   static void _checkOwnership(
     Script scriptPubKey,
     List<int> seed,
-    BtcSignRequest request,
+    UtxoSignRequest request,
     int index,
   ) {
     final expected = _scriptFor(seed, request, request.inputPaths[index]);

@@ -41,7 +41,7 @@ final class PreparedSigning {
   /// exceções com mensagem pronta para o usuário.
   static PreparedSigning from(TransferDocument document, SecureKey seed) =>
       switch (document) {
-        final BtcSignRequest request => _btc(request, seed),
+        final UtxoSignRequest request => _btc(request, seed),
         final EvmSignRequest request => _evm(request, seed),
         final SolSignRequest request => _sol(request, seed),
         _ => throw const FormatException(
@@ -49,24 +49,27 @@ final class PreparedSigning {
         ),
       };
 
-  static PreparedSigning _btc(BtcSignRequest request, SecureKey seed) {
+  static PreparedSigning _btc(UtxoSignRequest request, SecureKey seed) {
     final review = BtcSigner.review(request, seed);
+    final coin = request.coin;
+    String fmt(BigInt v) => formatUtxo(coin, v);
     return PreparedSigning(
-      title: 'Assinar envio de Bitcoin',
+      title: 'Assinar envio de ${coin.name}',
       rows: [
         for (final out in review.outputs)
           ReviewRow(
             out.isChange ? 'Troco (volta para você)' : 'Enviar para',
-            '${out.address}\n${formatBtc(out.amount)}',
+            '${out.address}\n${fmt(out.amount)}',
             emphasis: !out.isChange,
           ),
         ReviewRow(
           'Taxa da rede',
-          '${formatBtc(review.fee)} (~${review.feeRate.toStringAsFixed(1)} sat/vB)',
+          '${fmt(review.fee)} '
+              '(~${review.feeRate.toStringAsFixed(1)} ${coin.feeUnit})',
         ),
         ReviewRow(
           'Total que sai da carteira',
-          formatBtc(review.sending + review.fee),
+          fmt(review.sending + review.fee),
           emphasis: true,
         ),
       ],

@@ -206,7 +206,7 @@ final class WatchOnlyWallet {
           ),
           WatchOnlyField(
             'Primeiro endereço de recebimento',
-            btc.address(BtcAccount.receiveChain, 0),
+            btc.address(UtxoAccount.receiveChain, 0),
           ),
         ],
         howToWatch:

@@ -67,8 +67,22 @@ final class BtcFeeRates {
   final int economy;
 }
 
+/// O que a sincronização e o envio precisam de um servidor UTXO.
+abstract interface class UtxoBackend {
+  Future<EsploraAddressStats> addressStats(String address);
+
+  Future<List<EsploraUtxo>> utxos(String address);
+
+  Future<List<EsploraTx>> transactions(String address);
+
+  Future<String> rawTransaction(String txid);
+
+  /// Transmite a transação; devolve o txid informado pelo servidor.
+  Future<String> broadcast(String txHex);
+}
+
 /// Cliente da API Esplora (mempool.space / blockstream.info).
-final class EsploraClient {
+final class EsploraClient implements UtxoBackend {
   EsploraClient(this.baseUrl, this._http);
 
   final Uri baseUrl;
@@ -76,6 +90,7 @@ final class EsploraClient {
 
   Uri _url(String path) => Uri.parse('$baseUrl$path');
 
+  @override
   Future<EsploraAddressStats> addressStats(String address) async {
     final json = _map(await _http.getJson(_url('/address/$address')));
     final chain = _map(json['chain_stats']);
@@ -89,6 +104,7 @@ final class EsploraClient {
     );
   }
 
+  @override
   Future<List<EsploraUtxo>> utxos(String address) async {
     final json = await _http.getJson(_url('/address/$address/utxo'));
     return [
@@ -103,11 +119,13 @@ final class EsploraClient {
   }
 
   /// Até 50 transações mais recentes (inclui as da mempool).
+  @override
   Future<List<EsploraTx>> transactions(String address) async {
     final json = await _http.getJson(_url('/address/$address/txs'));
     return [for (final t in _list(json)) _tx(_map(t))];
   }
 
+  @override
   Future<String> rawTransaction(String txid) =>
       _http.getText(_url('/tx/$txid/hex'));
 
@@ -121,7 +139,7 @@ final class EsploraClient {
     );
   }
 
-  /// Transmite a transação; devolve o txid informado pelo servidor.
+  @override
   Future<String> broadcast(String txHex) async =>
       (await _http.postText(_url('/tx'), txHex)).trim();
 

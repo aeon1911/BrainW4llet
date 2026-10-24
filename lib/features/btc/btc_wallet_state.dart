@@ -66,8 +66,8 @@ final class BtcWalletState {
 final class BtcSync {
   BtcSync(this.account, this.client, {this.gapLimit = 20, this.batch = 4});
 
-  final BtcAccount account;
-  final EsploraClient client;
+  final UtxoAccount account;
+  final UtxoBackend client;
   final int gapLimit;
   final int batch;
 
@@ -76,7 +76,7 @@ final class BtcSync {
     final stats = <String, EsploraAddressStats>{};
     final next = <int, int>{};
 
-    for (final chain in [BtcAccount.receiveChain, BtcAccount.changeChain]) {
+    for (final chain in [UtxoAccount.receiveChain, UtxoAccount.changeChain]) {
       var index = 0;
       var gap = 0;
       int? firstUnused;
@@ -148,8 +148,8 @@ final class BtcSync {
       unconfirmedBalance: unconfirmed,
       utxos: utxos,
       history: history,
-      nextReceive: (chain: BtcAccount.receiveChain, index: next[0]!),
-      nextChange: (chain: BtcAccount.changeChain, index: next[1]!),
+      nextReceive: (chain: UtxoAccount.receiveChain, index: next[0]!),
+      nextChange: (chain: UtxoAccount.changeChain, index: next[1]!),
     );
   }
 

@@ -1,5 +1,6 @@
 import '../../features/btc/btc_account.dart';
 import '../../features/btc/esplora_client.dart';
+import '../../features/btc/insight_client.dart';
 import '../../features/evm/evm_client.dart';
 import '../../features/network/endpoints.dart';
 import '../../features/network/http_json.dart';
@@ -20,6 +21,12 @@ final class OnlineServices {
       http: http,
     );
     sol = SolClient(endpoints.solRpc, http);
+    final dashKey = wallet.dashAccountKey;
+    final insight = endpoints.dashInsight;
+    if (dashKey != null && insight != null) {
+      dashAccount = DashAccount(dashKey, wallet.network);
+      dash = InsightClient(insight, http);
+    }
   }
 
   final WatchOnlyWallet wallet;
@@ -29,6 +36,12 @@ final class OnlineServices {
   late final EsploraClient esplora;
   late final EvmClient evm;
   late final SolClient sol;
+
+  /// Só existe na rede principal.
+  DashAccount? dashAccount;
+  InsightClient? dash;
+
+  bool get hasDash => dashAccount != null && dash != null;
 
   void close() => http.close();
 }

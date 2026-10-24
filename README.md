@@ -10,7 +10,8 @@ palavras com as "Chaves de Vida" (respostas pessoais → Argon2id → passphrase
 | Bitcoin (SegWit nativo) | ✅ | ✅ | ✅ PSBT |
 | Ethereum (ETH nativo) | ✅ | ✅ | ✅ EIP-1559 |
 | Solana (SOL nativo) | ✅ | ✅ | ✅ |
-| Dash, Monero | só dados somente leitura | — | em desenvolvimento |
+| Dash | ✅ | ✅ | ✅ PSBT (só rede principal) |
+| Monero | só dados somente leitura | — | em desenvolvimento |
 
 ## Documentos
 

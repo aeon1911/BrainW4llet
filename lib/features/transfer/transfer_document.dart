@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../btc/btc_account.dart';
 import '../network/wallet_network.dart';
 
 /// Arquivo trocado entre a carteira online e o assinador frio (pendrive),
@@ -57,19 +58,23 @@ sealed class TransferDocument {
     }
 
     return switch (json['kind']) {
-      BtcSignRequest.kindName => BtcSignRequest(
-        network: network,
-        psbtBase64: str('psbt'),
-        inputPaths: _paths(json['inputPaths']),
-        changePath: json['changePath'] == null
-            ? null
-            : _path(json['changePath']),
-      ),
-      BtcSignedTransaction.kindName => BtcSignedTransaction(
-        network: network,
-        txHex: str('txHex'),
-        txid: str('txid'),
-      ),
+      final String kind when UtxoSignRequest.coinOfKind(kind) != null =>
+        UtxoSignRequest(
+          coin: UtxoSignRequest.coinOfKind(kind)!,
+          network: network,
+          psbtBase64: str('psbt'),
+          inputPaths: _paths(json['inputPaths']),
+          changePath: json['changePath'] == null
+              ? null
+              : _path(json['changePath']),
+        ),
+      final String kind when UtxoSignedTransaction.coinOfKind(kind) != null =>
+        UtxoSignedTransaction(
+          coin: UtxoSignedTransaction.coinOfKind(kind)!,
+          network: network,
+          txHex: str('txHex'),
+          txid: str('txid'),
+        ),
       EvmSignRequest.kindName => EvmSignRequest(
         network: network,
         unsignedTxHex: str('unsignedTx'),
@@ -115,15 +120,21 @@ sealed class TransferDocument {
 /// Cadeia (0 = receber, 1 = troco) e índice dentro da conta BIP-84.
 typedef BtcPath = ({int chain, int index});
 
-final class BtcSignRequest extends TransferDocument {
-  const BtcSignRequest({
+final class UtxoSignRequest extends TransferDocument {
+  const UtxoSignRequest({
+    this.coin = UtxoCoin.bitcoin,
     required WalletNetwork network,
     required this.psbtBase64,
     required this.inputPaths,
     this.changePath,
   }) : super(network);
 
-  static const String kindName = 'btc-sign-request';
+  static String kindFor(UtxoCoin coin) => '${coin.fileTag}-sign-request';
+
+  static UtxoCoin? coinOfKind(String kind) =>
+      UtxoCoin.values.where((c) => kindFor(c) == kind).firstOrNull;
+
+  final UtxoCoin coin;
 
   /// PSBT (BIP-174), o mesmo formato do Electrum/Sparrow.
   final String psbtBase64;
@@ -135,10 +146,10 @@ final class BtcSignRequest extends TransferDocument {
   final BtcPath? changePath;
 
   @override
-  String get kind => kindName;
+  String get kind => kindFor(coin);
 
   @override
-  String get suggestedFileName => 'btc-para-assinar.json';
+  String get suggestedFileName => '${coin.fileTag}-para-assinar.json';
 
   @override
   Map<String, Object?> payload() => {
@@ -152,23 +163,28 @@ final class BtcSignRequest extends TransferDocument {
   };
 }
 
-final class BtcSignedTransaction extends TransferDocument {
-  const BtcSignedTransaction({
+final class UtxoSignedTransaction extends TransferDocument {
+  const UtxoSignedTransaction({
+    this.coin = UtxoCoin.bitcoin,
     required WalletNetwork network,
     required this.txHex,
     required this.txid,
   }) : super(network);
 
-  static const String kindName = 'btc-signed';
+  static String kindFor(UtxoCoin coin) => '${coin.fileTag}-signed';
 
+  static UtxoCoin? coinOfKind(String kind) =>
+      UtxoCoin.values.where((c) => kindFor(c) == kind).firstOrNull;
+
+  final UtxoCoin coin;
   final String txHex;
   final String txid;
 
   @override
-  String get kind => kindName;
+  String get kind => kindFor(coin);
 
   @override
-  String get suggestedFileName => 'btc-assinada.json';
+  String get suggestedFileName => '${coin.fileTag}-assinada.json';
 
   @override
   Map<String, Object?> payload() => {'txHex': txHex, 'txid': txid};

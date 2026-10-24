@@ -30,15 +30,24 @@ AddressOwnership? findAddress(
   if (candidate == wallet.xmrAddress) {
     return const AddressOwnership('Monero (endereço principal)');
   }
-  final btc = BtcAccount(wallet.btcAccountKey, wallet.network);
-  final normalized = candidate.toLowerCase();
-  for (final chain in [BtcAccount.receiveChain, BtcAccount.changeChain]) {
-    for (var index = 0; index < scanPerChain; index++) {
-      if (btc.address(chain, index) == normalized) {
-        final kind = chain == BtcAccount.receiveChain ? 'recebimento' : 'troco';
-        return AddressOwnership(
-          'Bitcoin, $kind nº $index (${btc.path(chain, index)})',
-        );
+  final accounts = <(UtxoAccount, String)>[
+    (BtcAccount(wallet.btcAccountKey, wallet.network), candidate.toLowerCase()),
+    if (wallet.dashAccountKey case final dashKey?)
+      // Endereços Dash (Base58) diferenciam maiúsculas: comparação exata.
+      (DashAccount(dashKey, wallet.network), candidate),
+  ];
+  for (final (account, target) in accounts) {
+    for (final chain in [UtxoAccount.receiveChain, UtxoAccount.changeChain]) {
+      for (var index = 0; index < scanPerChain; index++) {
+        if (account.address(chain, index) == target) {
+          final kind = chain == UtxoAccount.receiveChain
+              ? 'recebimento'
+              : 'troco';
+          return AddressOwnership(
+            '${account.coin.name}, $kind nº $index '
+            '(${account.path(chain, index)})',
+          );
+        }
       }
     }
   }

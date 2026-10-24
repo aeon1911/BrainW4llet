@@ -38,7 +38,7 @@ void main() {
   });
   tearDown(() => seed.dispose());
 
-  BtcSignRequest maliciousPsbt({int? sigHash}) {
+  UtxoSignRequest maliciousPsbt({int? sigHash}) {
     // Saída antes da entrada: a biblioteca não deixa mudar saídas depois
     // que uma entrada declara o tipo de assinatura.
     final psbt = PsbtBuilderV0.create()
@@ -60,7 +60,7 @@ void main() {
           sigHashType: sigHash,
         ),
       );
-    return BtcSignRequest(
+    return UtxoSignRequest(
       network: WalletNetwork.mainnet,
       psbtBase64: psbt.toBase64(),
       inputPaths: const [(chain: 0, index: 0)],
@@ -107,7 +107,8 @@ void main() {
 
   test('arquivo de transferência continua íntegro após ida e volta', () {
     final request = maliciousPsbt();
-    final decoded = TransferDocument.decode(request.encode()) as BtcSignRequest;
+    final decoded =
+        TransferDocument.decode(request.encode()) as UtxoSignRequest;
     expect(decoded.psbtBase64, request.psbtBase64);
   });
 

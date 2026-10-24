@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../features/btc/btc_account.dart';
 import '../../features/btc/btc_wallet_state.dart';
+import '../../features/btc/esplora_client.dart';
 import '../../features/network/http_json.dart';
 import '../../features/wallet/watch_only.dart';
 import '../widgets/file_io.dart';
@@ -60,7 +61,7 @@ class _OnlineWalletScreenState extends State<OnlineWalletScreen> {
     if (services == null) return _openScreen(context);
     final wallet = services.wallet;
     return DefaultTabController(
-      length: 3,
+      length: services.hasDash ? 4 : 3,
       child: Scaffold(
         appBar: AppBar(
           title: Text('Carteira ${wallet.fingerprint}'),
@@ -83,11 +84,12 @@ class _OnlineWalletScreenState extends State<OnlineWalletScreen> {
               }),
             ),
           ],
-          bottom: const TabBar(
+          bottom: TabBar(
             tabs: [
               Tab(text: 'Bitcoin'),
               Tab(text: 'Ethereum'),
               Tab(text: 'Solana'),
+              if (services.hasDash) Tab(text: 'Dash'),
             ],
           ),
         ),
@@ -109,6 +111,7 @@ class _OnlineWalletScreenState extends State<OnlineWalletScreen> {
                   _btcTab(services),
                   _evmTab(services),
                   _solTab(services),
+                  if (services.hasDash) _dashTab(services),
                 ],
               ),
             ),
@@ -152,17 +155,48 @@ class _OnlineWalletScreenState extends State<OnlineWalletScreen> {
     );
   }
 
-  Widget _btcTab(OnlineServices services) => ChainTab<BtcWalletState>(
+  Widget _btcTab(OnlineServices services) => _utxoTab(
+    account: services.btcAccount,
+    backend: services.esplora,
+    explorerTx: services.endpoints.btcExplorerTx,
+    explorerSuffix: '',
+    feeOptions: () async {
+      final rates = await services.esplora.feeRates();
+      return [
+        ('Rápida', rates.fastest),
+        ('~30 min', rates.halfHour),
+        ('~1 hora', rates.hour),
+        ('Econômica', rates.economy),
+      ];
+    },
+  );
+
+  Widget _dashTab(OnlineServices services) => _utxoTab(
+    account: services.dashAccount!,
+    backend: services.dash!,
+    explorerTx: services.endpoints.dashExplorerTx!,
+    explorerSuffix: services.endpoints.dashExplorerSuffix,
+    // A rede Dash quase nunca congestiona: 1 duff/B é a taxa padrão.
+    feeOptions: () async => const [('Normal', 1), ('Prioritária', 2)],
+  );
+
+  Widget _utxoTab({
+    required UtxoAccount account,
+    required UtxoBackend backend,
+    required String explorerTx,
+    required String explorerSuffix,
+    required FeeOptions feeOptions,
+  }) => ChainTab<BtcWalletState>(
     load: () async {
-      final state = await BtcSync(services.btcAccount, services.esplora).run();
-      final url = services.endpoints.btcExplorerTx;
+      final state = await BtcSync(account, backend).run();
+      String fmt(BigInt v) => formatUtxo(account.coin, v);
       return ChainSnapshot(
-        balance: formatBtc(state.confirmedBalance),
+        balance: fmt(state.confirmedBalance),
         pending: state.unconfirmedBalance == BigInt.zero
             ? null
-            : 'Pendente: ${formatBtc(state.unconfirmedBalance)}',
-        receiveAddress: services.btcAccount.address(
-          BtcAccount.receiveChain,
+            : 'Pendente: ${fmt(state.unconfirmedBalance)}',
+        receiveAddress: account.address(
+          UtxoAccount.receiveChain,
           state.nextReceive.index,
         ),
         receiveNote:
@@ -173,10 +207,10 @@ class _OnlineWalletScreenState extends State<OnlineWalletScreen> {
           for (final h in state.history)
             HistoryRow(
               id: h.txid,
-              amount: signed(formatBtc(h.delta.abs()), h.delta),
+              amount: signed(fmt(h.delta.abs()), h.delta),
               incoming: !h.delta.isNegative,
               when: formatDate(h.time),
-              explorerUrl: '$url${h.txid}',
+              explorerUrl: '$explorerTx${h.txid}$explorerSuffix',
             ),
         ],
         raw: state,
@@ -184,7 +218,12 @@ class _OnlineWalletScreenState extends State<OnlineWalletScreen> {
     },
     onSend: (context, snapshot) => Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => BtcSendScreen(services: services, state: snapshot.raw),
+        builder: (_) => UtxoSendScreen(
+          account: account,
+          backend: backend,
+          state: snapshot.raw,
+          feeOptions: feeOptions,
+        ),
       ),
     ),
   );

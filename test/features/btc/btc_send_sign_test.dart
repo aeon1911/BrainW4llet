@@ -77,7 +77,7 @@ void main() {
   });
   tearDown(() => seed.dispose());
 
-  Future<BtcSignRequest> request({BigInt? amount}) async {
+  Future<UtxoSignRequest> request({BigInt? amount}) async {
     final plan = BtcSend.plan(
       state: state,
       account: account,
@@ -92,7 +92,7 @@ void main() {
       rawTransaction: (_) async => funding.serialize(),
     );
     // Passa pelo arquivo, como no pendrive.
-    return TransferDocument.decode(req.encode()) as BtcSignRequest;
+    return TransferDocument.decode(req.encode()) as UtxoSignRequest;
   }
 
   test(
@@ -143,7 +143,7 @@ void main() {
 
   test('recusa entrada que não é desta seed (caminho adulterado)', () async {
     final req = await request(amount: BigInt.from(120000));
-    final tampered = BtcSignRequest(
+    final tampered = UtxoSignRequest(
       network: req.network,
       psbtBase64: req.psbtBase64,
       inputPaths: [(chain: 0, index: 5), req.inputPaths[1]],
@@ -163,7 +163,7 @@ void main() {
 
   test('troco declarado falso não aparece como troco', () async {
     final req = await request(amount: BigInt.from(120000));
-    final lying = BtcSignRequest(
+    final lying = UtxoSignRequest(
       network: req.network,
       psbtBase64: req.psbtBase64,
       inputPaths: req.inputPaths,

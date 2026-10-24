@@ -1,6 +1,11 @@
+import '../../features/btc/btc_account.dart';
 import '../../features/wallet/amounts.dart';
 
 String formatBtc(BigInt sats) => '${Amounts.format(sats, 8)} BTC';
+
+/// Valor em unidades base (satoshis/duffs) de uma moeda UTXO.
+String formatUtxo(UtxoCoin coin, BigInt units) =>
+    '${Amounts.format(units, 8)} ${coin.ticker}';
 
 String formatEth(BigInt wei) => '${Amounts.format(wei, 18)} ETH';
 

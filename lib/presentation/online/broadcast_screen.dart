@@ -63,16 +63,19 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
   List<String> _describe(TransferDocument document) {
     final services = widget.services;
     switch (document) {
-      case final BtcSignedTransaction doc:
+      case final UtxoSignedTransaction doc:
+        if (doc.coin == UtxoCoin.dash && !services.hasDash) {
+          throw const FormatException('Esta carteira não tem Dash nesta rede.');
+        }
         final tx = BtcTransaction.deserialize(
           BytesUtils.fromHexString(doc.txHex),
         );
-        final network = BtcAccount.btcNetworkFor(doc.network);
+        final network = UtxoAccount.addressNetworkFor(doc.coin, doc.network);
         return [
-          'Bitcoin · txid ${shorten(doc.txid)}',
+          '${doc.coin.name} · txid ${shorten(doc.txid)}',
           for (final out in tx.outputs)
             '→ ${BitcoinScriptUtils.generateAddressFromScriptPubKey(out.scriptPubKey).toAddress(network)}: '
-                '${formatBtc(out.amount)}',
+                '${formatUtxo(doc.coin, out.amount)}',
         ];
       case final EvmSignedTransaction doc:
         final tx = ETHTransaction.fromSerialized(
@@ -114,10 +117,16 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
     });
     try {
       final (id, url) = switch (_document!) {
-        final BtcSignedTransaction doc => (
-          await services.esplora.broadcast(doc.txHex),
-          endpoints.btcExplorerTx,
-        ),
+        final UtxoSignedTransaction doc => switch (doc.coin) {
+          UtxoCoin.bitcoin => (
+            await services.esplora.broadcast(doc.txHex),
+            endpoints.btcExplorerTx,
+          ),
+          UtxoCoin.dash => (
+            await services.dash!.broadcast(doc.txHex),
+            endpoints.dashExplorerTx!,
+          ),
+        },
         final EvmSignedTransaction doc => (
           await services.evm.broadcast(doc.signedTxHex),
           endpoints.evmExplorerTx,
@@ -128,9 +137,12 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
         ),
         _ => throw StateError('tipo inesperado'),
       };
-      final suffix = _document is SolSignedTransaction
-          ? endpoints.solExplorerSuffix
-          : '';
+      final suffix = switch (_document) {
+        SolSignedTransaction() => endpoints.solExplorerSuffix,
+        UtxoSignedTransaction(coin: UtxoCoin.dash) =>
+          endpoints.dashExplorerSuffix,
+        _ => '',
+      };
       setState(() {
         _resultId = id;
         _resultUrl = '$url$id$suffix';
@@ -167,7 +179,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
           ] else ...[
             Text(
               'Abra o arquivo que o assinador frio salvou '
-              '(btc-assinada.json, eth-assinada.json ou sol-assinada.json).',
+              '(btc-, dash-, eth- ou sol-assinada.json).',
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(

@@ -104,7 +104,8 @@ class _UnlockScreenState extends State<UnlockScreen> {
       _addressIsMine = found != null;
       _addressResult = found == null
           ? 'NÃO pertence a esta carteira (conferidos ETH, SOL, XMR e os '
-                'primeiros 500 endereços de recebimento e de troco do BTC). '
+                'primeiros 500 endereços de recebimento e de troco do BTC e da '
+                'Dash). '
                 'Não receba nada nele.'
           : 'É seu: ${found.description}.';
     });

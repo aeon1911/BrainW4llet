@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../features/btc/btc_send.dart';
 import '../../features/btc/btc_wallet_state.dart';
+import '../../features/btc/btc_account.dart';
 import '../../features/btc/esplora_client.dart';
 import '../../features/evm/evm_send.dart';
 import '../../features/sol/sol_send.dart';
@@ -101,39 +102,54 @@ class _ErrorText extends StatelessWidget {
         );
 }
 
-// ---------------------------------------------------------------- Bitcoin --
+// ------------------------------------------------------ Bitcoin e Dash --
 
-class BtcSendScreen extends StatefulWidget {
-  const BtcSendScreen({super.key, required this.services, required this.state});
+/// Opções de taxa (rótulo, valor na unidade da moeda).
+typedef FeeOptions = Future<List<(String, int)>> Function();
 
-  final OnlineServices services;
+class UtxoSendScreen extends StatefulWidget {
+  const UtxoSendScreen({
+    super.key,
+    required this.account,
+    required this.backend,
+    required this.state,
+    required this.feeOptions,
+  });
+
+  final UtxoAccount account;
+  final UtxoBackend backend;
   final BtcWalletState state;
+  final FeeOptions feeOptions;
 
   @override
-  State<BtcSendScreen> createState() => _BtcSendScreenState();
+  State<UtxoSendScreen> createState() => _UtxoSendScreenState();
 }
 
-class _BtcSendScreenState extends State<BtcSendScreen> {
+class _UtxoSendScreenState extends State<UtxoSendScreen> {
   final _destination = TextEditingController();
   final _amount = TextEditingController();
   final _customFee = TextEditingController();
   bool _sendAll = false;
   bool _busy = false;
   String? _error;
-  BtcFeeRates? _rates;
+  List<(String, int)>? _rates;
   int? _feeRate;
   BtcSendPlan? _plan;
+
+  UtxoCoin get _coin => widget.account.coin;
+
+  String _fmt(BigInt units) => formatUtxo(_coin, units);
 
   @override
   void initState() {
     super.initState();
-    widget.services.esplora
-        .feeRates()
+    widget
+        .feeOptions()
         .then((rates) {
           if (mounted) {
             setState(() {
               _rates = rates;
-              _feeRate = rates.halfHour;
+              _feeRate = rates[rates.length > 1 ? 1 : 0].$2;
             });
           }
         })
@@ -162,7 +178,7 @@ class _BtcSendScreenState extends State<BtcSendScreen> {
       if (rate == null) throw const BtcSendException('Escolha a taxa.');
       final plan = BtcSend.plan(
         state: widget.state,
-        account: widget.services.btcAccount,
+        account: widget.account,
         destination: _destination.text,
         amount: _sendAll ? null : Amounts.parse(_amount.text, 8),
         feeRate: rate,
@@ -181,8 +197,8 @@ class _BtcSendScreenState extends State<BtcSendScreen> {
       final request = await BtcSend.buildRequest(
         plan: _plan!,
         state: widget.state,
-        account: widget.services.btcAccount,
-        rawTransaction: widget.services.esplora.rawTransaction,
+        account: widget.account,
+        rawTransaction: widget.backend.rawTransaction,
       );
       if (mounted) await _saveRequest(context, request);
     } on Exception catch (e) {
@@ -197,12 +213,12 @@ class _BtcSendScreenState extends State<BtcSendScreen> {
     final rates = _rates;
     final plan = _plan;
     return Scaffold(
-      appBar: AppBar(title: const Text('Enviar Bitcoin')),
+      appBar: AppBar(title: Text('Enviar ${_coin.name}')),
       body: PageFrame(
         children: [
           Text(
             'Saldo confirmado disponível: '
-            '${formatBtc(widget.state.confirmedBalance)}',
+            '${_fmt(widget.state.confirmedBalance)}',
           ),
           const SizedBox(height: 12),
           _SendFields(
@@ -213,7 +229,7 @@ class _BtcSendScreenState extends State<BtcSendScreen> {
               _sendAll = v;
               _plan = null;
             }),
-            unit: 'BTC',
+            unit: _coin.ticker,
             enabled: !_busy,
           ),
           Text('Taxa', style: Theme.of(context).textTheme.labelLarge),
@@ -225,14 +241,9 @@ class _BtcSendScreenState extends State<BtcSendScreen> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final (label, rate) in [
-                  ('Rápida', rates.fastest),
-                  ('~30 min', rates.halfHour),
-                  ('~1 hora', rates.hour),
-                  ('Econômica', rates.economy),
-                ])
+                for (final (label, rate) in rates)
                   ChoiceChip(
-                    label: Text('$label · $rate sat/vB'),
+                    label: Text('$label · $rate ${_coin.feeUnit}'),
                     selected: _feeRate == rate,
                     onSelected: (_) => setState(() {
                       _feeRate = rate;
@@ -254,8 +265,8 @@ class _BtcSendScreenState extends State<BtcSendScreen> {
             TextField(
               controller: _customFee,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'sat/vB',
+              decoration: InputDecoration(
+                labelText: _coin.feeUnit,
                 border: OutlineInputBorder(),
               ),
             ),
@@ -274,18 +285,16 @@ class _BtcSendScreenState extends State<BtcSendScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Enviar: ${formatBtc(plan.amount)}'),
+                    Text('Enviar: ${_fmt(plan.amount)}'),
                     Text(
-                      'Taxa: ${formatBtc(plan.fee)} (${plan.feeRate} sat/vB)',
+                      'Taxa: ${_fmt(plan.fee)} (${plan.feeRate} ${_coin.feeUnit})',
                     ),
                     if (plan.change > BigInt.zero)
-                      Text(
-                        'Troco (volta para você): ${formatBtc(plan.change)}',
-                      ),
+                      Text('Troco (volta para você): ${_fmt(plan.change)}'),
                     Text('Moedas usadas: ${plan.inputs.length}'),
                     const Divider(),
                     Text(
-                      'Total que sai: ${formatBtc(plan.amount + plan.fee)}',
+                      'Total que sai: ${_fmt(plan.amount + plan.fee)}',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ],

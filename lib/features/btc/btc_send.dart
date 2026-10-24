@@ -26,7 +26,7 @@ final class BtcSendPlan {
     required this.feeRate,
   });
 
-  final BitcoinAddress destination;
+  final BitcoinBaseAddress destination;
   final BigInt amount;
   final BigInt fee;
   final List<BtcOwnedUtxo> inputs;
@@ -39,18 +39,20 @@ final class BtcSendPlan {
 /// Monta envios na carteira online. Não tem acesso a nenhuma chave privada:
 /// produz um PSBT que o assinador frio assina.
 abstract final class BtcSend {
-  /// Abaixo disso uma saída P2WPKH é "poeira" e a rede rejeita.
+  /// Limite de poeira do Bitcoin (P2WPKH); outras moedas: ver a conta.
   static final BigInt dustLimit = BigInt.from(294);
 
   /// Tamanho virtual (vB) estimado de uma transação P2WPKH.
   static int estimateVsize(int inputs, int outputs) =>
-      (10.5 + 68 * inputs + 31 * outputs).ceil();
+      BtcAccount.estimateP2wpkhSize(inputs, outputs);
 
-  static BitcoinAddress parseAddress(String text, BtcAccount account) {
+  static BitcoinBaseAddress parseAddress(String text, UtxoAccount account) {
     try {
-      return BitcoinAddress(text.trim(), network: account.btcNetwork);
-    } on Exception {
-      throw const BtcSendException('Endereço Bitcoin inválido para esta rede.');
+      return account.parseAddress(text);
+    } on Object {
+      throw BtcSendException(
+        'Endereço ${account.coin.name} inválido para esta rede.',
+      );
     }
   }
 
@@ -58,7 +60,7 @@ abstract final class BtcSend {
   /// troco. [amount] nulo = enviar tudo.
   static BtcSendPlan plan({
     required BtcWalletState state,
-    required BtcAccount account,
+    required UtxoAccount account,
     required String destination,
     required BigInt? amount,
     required int feeRate,
@@ -74,13 +76,13 @@ abstract final class BtcSend {
     }
 
     BigInt feeFor(int inputs, int outputs) =>
-        BigInt.from(estimateVsize(inputs, outputs) * feeRate);
+        BigInt.from(account.estimateSize(inputs, outputs) * feeRate);
 
     if (amount == null) {
       final total = available.fold(BigInt.zero, (s, u) => s + u.value);
       final fee = feeFor(available.length, 1);
       final send = total - fee;
-      if (send < dustLimit) {
+      if (send < account.dustLimit) {
         throw const BtcSendException('Saldo insuficiente para pagar a taxa.');
       }
       return BtcSendPlan(
@@ -93,8 +95,10 @@ abstract final class BtcSend {
       );
     }
 
-    if (amount < dustLimit) {
-      throw BtcSendException('Valor mínimo: $dustLimit satoshis.');
+    if (amount < account.dustLimit) {
+      throw BtcSendException(
+        'Valor mínimo: ${account.dustLimit} unidades (satoshis/duffs).',
+      );
     }
     final selected = <BtcOwnedUtxo>[];
     var total = BigInt.zero;
@@ -103,7 +107,7 @@ abstract final class BtcSend {
       total += utxo.value;
       final feeWithChange = feeFor(selected.length, 2);
       final change = total - amount - feeWithChange;
-      if (change >= dustLimit) {
+      if (change >= account.dustLimit) {
         return BtcSendPlan(
           destination: to,
           amount: amount,
@@ -131,10 +135,10 @@ abstract final class BtcSend {
 
   /// Monta o PSBT. Busca as transações de origem completas (non-witness
   /// UTXO) para o assinador poder conferir os valores das entradas.
-  static Future<BtcSignRequest> buildRequest({
+  static Future<UtxoSignRequest> buildRequest({
     required BtcSendPlan plan,
     required BtcWalletState state,
-    required BtcAccount account,
+    required UtxoAccount account,
     required Future<String> Function(String txid) rawTransaction,
   }) async {
     final rawTxs = await Future.wait(
@@ -143,29 +147,23 @@ abstract final class BtcSend {
     final psbt = PsbtBuilderV0.create();
     psbt.addUtxos([
       for (var i = 0; i < plan.inputs.length; i++)
-        _psbtUtxo(plan.inputs[i], rawTxs[i].trim()),
+        _psbtUtxo(plan.inputs[i], rawTxs[i].trim(), account.scriptType),
     ]);
     psbt.addOutput(
-      PsbtTransactionOutput(
-        amount: plan.amount,
-        address: plan.destination.baseAddress,
-      ),
+      PsbtTransactionOutput(amount: plan.amount, address: plan.destination),
     );
     BtcPath? changePath;
     if (plan.change > BigInt.zero) {
       changePath = state.nextChange;
-      final changeAddress = BitcoinAddress(
+      final changeAddress = account.parseAddress(
         account.address(changePath.chain, changePath.index),
-        network: account.btcNetwork,
       );
       psbt.addOutput(
-        PsbtTransactionOutput(
-          amount: plan.change,
-          address: changeAddress.baseAddress,
-        ),
+        PsbtTransactionOutput(amount: plan.change, address: changeAddress),
       );
     }
-    return BtcSignRequest(
+    return UtxoSignRequest(
+      coin: account.coin,
       network: account.network,
       psbtBase64: psbt.toBase64(),
       inputPaths: [for (final u in plan.inputs) u.path],
@@ -173,7 +171,11 @@ abstract final class BtcSend {
     );
   }
 
-  static PsbtUtxo _psbtUtxo(BtcOwnedUtxo utxo, String rawTxHex) {
+  static PsbtUtxo _psbtUtxo(
+    BtcOwnedUtxo utxo,
+    String rawTxHex,
+    BitcoinAddressType scriptType,
+  ) {
     final tx = BtcTransaction.deserialize(BytesUtils.fromHexString(rawTxHex));
     if (tx.txId() != utxo.txid) {
       throw const BtcSendException(
@@ -191,7 +193,7 @@ abstract final class BtcSend {
         txHash: utxo.txid,
         value: utxo.value,
         vout: utxo.vout,
-        scriptType: SegwitAddressType.p2wpkh,
+        scriptType: scriptType,
         blockHeight: 0,
       ),
       tx: tx,

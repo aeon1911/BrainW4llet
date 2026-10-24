@@ -64,6 +64,20 @@ arquivos de transferência, as dependências diretas e o processo de build.
   transferência do System Program, paga pela sua conta.
 - Rede trocada (teste ↔ principal) é recusada nos dois lados.
 
+### Adendo 2026-10-24: Dash
+
+A Dash reaproveita o mesmo código de Bitcoin, generalizado para "moedas UTXO" (`UtxoAccount`,
+`UtxoBackend`). Assim, as proteções da auditoria valem para as duas moedas: SIGHASH_ALL forçado,
+posse das entradas conferida contra a seed, troco conferido, alertas de taxa (acima de 50
+duff/B) e checagem final da assinatura (no scriptSig, já que a Dash usa P2PKH legado).
+Verificações:
+
+- A assinatura legada foi conferida em Python (hash pré-SegWit, ECDSA, low-S, chave pública ↔
+  endereço de origem, endereços "X…" e txid).
+- Ataques testados: SIGHASH_NONE em Dash e PSBT de Dash rotulado como Bitcoin (confusão de moeda).
+- A sincronização foi testada ao vivo no Insight (insight.dash.org, mantido pela Dash Core Group).
+- Não existe testnet Dash pública disponível; o primeiro envio real deve ser de valor pequeno.
+
 ## 4. Riscos residuais (não corrigíveis no código, ou aceitos)
 
 1. **O app é um só binário.** O assinador não usa a rede, mas o código de rede está compilado no
