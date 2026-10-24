@@ -14,6 +14,7 @@ import 'broadcast_screen.dart';
 import 'chain_tab.dart';
 import 'online_services.dart';
 import 'send_screens.dart';
+import 'xmr_tab.dart';
 
 /// Carteira online (somente leitura): saldo, histórico, receber, montar
 /// envios e transmitir transações assinadas. Não tem nenhuma chave privada.
@@ -61,7 +62,7 @@ class _OnlineWalletScreenState extends State<OnlineWalletScreen> {
     if (services == null) return _openScreen(context);
     final wallet = services.wallet;
     return DefaultTabController(
-      length: services.hasDash ? 4 : 3,
+      length: 3 + (services.hasDash ? 1 : 0) + (_hasXmr(services) ? 1 : 0),
       child: Scaffold(
         appBar: AppBar(
           title: Text('Carteira ${wallet.fingerprint}'),
@@ -90,6 +91,7 @@ class _OnlineWalletScreenState extends State<OnlineWalletScreen> {
               Tab(text: 'Ethereum'),
               Tab(text: 'Solana'),
               if (services.hasDash) Tab(text: 'Dash'),
+              if (_hasXmr(services)) Tab(text: 'Monero'),
             ],
           ),
         ),
@@ -112,6 +114,7 @@ class _OnlineWalletScreenState extends State<OnlineWalletScreen> {
                   _evmTab(services),
                   _solTab(services),
                   if (services.hasDash) _dashTab(services),
+                  if (_hasXmr(services)) XmrTab(services: services),
                 ],
               ),
             ),
@@ -154,6 +157,9 @@ class _OnlineWalletScreenState extends State<OnlineWalletScreen> {
       ),
     );
   }
+
+  bool _hasXmr(OnlineServices services) =>
+      services.wallet.xmrAddress != null && services.wallet.xmrViewKey != null;
 
   Widget _btcTab(OnlineServices services) => _utxoTab(
     account: services.btcAccount,

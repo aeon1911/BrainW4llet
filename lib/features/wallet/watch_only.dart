@@ -3,9 +3,9 @@ import 'dart:convert';
 import 'package:blockchain_utils/blockchain_utils.dart';
 import 'package:sodium/sodium_sumo.dart';
 
-import '../../core/security/memory.dart';
 import '../btc/btc_account.dart';
 import '../network/wallet_network.dart';
+import '../xmr/xmr_keys.dart';
 
 /// Um dado exportado para a carteira somente-leitura.
 final class WatchOnlyField {
@@ -59,6 +59,7 @@ final class WatchOnlyWallet {
     this.dashAccountKey,
     this.xmrAddress,
     this.xmrViewKey,
+    this.createdAt,
   });
 
   static const String format = 'brainw4llet-watch-only';
@@ -74,6 +75,11 @@ final class WatchOnlyWallet {
   final String? xmrAddress;
   final String? xmrViewKey;
 
+  /// Quando o arquivo foi gerado (relógio do assinador). A carteira online
+  /// usa como ponto de partida da varredura do Monero. Não entra na
+  /// impressão digital.
+  final DateTime? createdAt;
+
   /// Deriva tudo a partir da seed BIP-39 de 64 bytes (lado frio).
   ///
   /// Limitação: a `blockchain_utils` mantém cópias das chaves no heap do
@@ -81,21 +87,10 @@ final class WatchOnlyWallet {
   factory WatchOnlyWallet.fromSeed(SecureKey seed, WalletNetwork network) =>
       seed.runUnlockedSync((bytes) {
         final mainnet = network == WalletNetwork.mainnet;
-        String? xmrAddress;
-        String? xmrViewKey;
-        if (mainnet) {
-          final xmrBip44Key = Bip44.fromSeed(
-            bytes,
-            Bip44Coins.moneroSecp256k1,
-          ).deriveDefaultPath.privateKey.raw;
-          try {
-            final xmr = MoneroAccount.fromBip44PrivateKey(xmrBip44Key);
-            xmrAddress = xmr.primaryAddress;
-            xmrViewKey = BytesUtils.toHexString(xmr.privateViewKey.raw);
-          } finally {
-            wipeBytes(xmrBip44Key);
-          }
-        }
+        // Monero na rede principal e na stagenet (rede de teste).
+        final xmr = XmrKeys.fullAccount(bytes, network);
+        final xmrAddress = xmr.primaryAddress;
+        final xmrViewKey = BytesUtils.toHexString(xmr.privateViewKey.raw);
         return WatchOnlyWallet(
           network: network,
           btcAccountKey: BtcAccount.accountKeyFromSeed(bytes, network),
@@ -119,6 +114,7 @@ final class WatchOnlyWallet {
               : null,
           xmrAddress: xmrAddress,
           xmrViewKey: xmrViewKey,
+          createdAt: DateTime.now().toUtc(),
         );
       });
 
@@ -148,6 +144,7 @@ final class WatchOnlyWallet {
       dashAccountKey: optional('dashAccountKey'),
       xmrAddress: optional('xmrAddress'),
       xmrViewKey: optional('xmrViewKey'),
+      createdAt: DateTime.tryParse(optional('createdAt') ?? ''),
     );
     // Valida as chaves de verdade (lança se a zpub/vpub for inválida).
     BtcAccount(wallet.btcAccountKey, wallet.network);
@@ -164,6 +161,7 @@ final class WatchOnlyWallet {
     if (dashAccountKey != null) 'dashAccountKey': dashAccountKey,
     if (xmrAddress != null) 'xmrAddress': xmrAddress,
     if (xmrViewKey != null) 'xmrViewKey': xmrViewKey,
+    if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
   };
 
   /// Impressão digital curta para conferir que é sempre a mesma carteira.
@@ -255,7 +253,7 @@ final class WatchOnlyWallet {
         ),
       if ((xmrAddress, xmrViewKey) case (final address?, final viewKey?))
         WatchOnlyAsset(
-          name: 'Monero',
+          name: testnet ? 'Monero (stagenet)' : 'Monero',
           ticker: 'XMR',
           path: '${WatchOnlyPaths.monero} (secp256k1 → Keccak → ed25519)',
           fields: [

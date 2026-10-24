@@ -13,6 +13,8 @@ import '../widgets/file_io.dart';
 import '../widgets/format.dart';
 import '../widgets/page_frame.dart';
 import 'online_services.dart';
+import '../../features/xmr/xmr_wallet.dart';
+import 'xmr_tab.dart';
 
 /// Abre a transação assinada pelo assinador frio, mostra o que ela faz e
 /// transmite para a rede.
@@ -100,11 +102,33 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
           'Solana · ${shorten(doc.signature)}',
           '→ ${review.to}: ${formatSol(review.lamports)}',
         ];
+      case final XmrSignedTransaction doc:
+        return [
+          'Monero · ${shorten(doc.txHash)}',
+          '${doc.keyImages.length} key image(s) serão importadas.',
+        ];
+      case final XmrKeyImages doc:
+        return [
+          'Key images do Monero: ${doc.keyImages.length}',
+          'Nada é transmitido; só atualiza o saldo.',
+        ];
       default:
         throw const FormatException(
           'Este arquivo é um pedido de assinatura, não uma transação '
           'assinada. Assine-o primeiro no assinador frio.',
         );
+    }
+  }
+
+  /// Usa o mesmo cache da aba Monero (transmite e importa key images).
+  Future<String> _withXmr(Future<String> Function(XmrWatcher) action) async {
+    final watcher = await openXmrWatcher(widget.services);
+    try {
+      final created = widget.services.wallet.createdAt ?? DateTime.now();
+      await watcher.open(created);
+      return await action(watcher);
+    } finally {
+      watcher.close();
     }
   }
 
@@ -135,6 +159,17 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
           await services.sol.broadcast(doc.txBase64),
           endpoints.solExplorerTx,
         ),
+        final XmrSignedTransaction doc => (
+          await _withXmr((w) => w.broadcast(doc)),
+          endpoints.xmrExplorerTx,
+        ),
+        final XmrKeyImages doc => (
+          await _withXmr((w) async {
+            await w.importKeyImages(doc.keyImages);
+            return 'key images importadas';
+          }),
+          '',
+        ),
         _ => throw StateError('tipo inesperado'),
       };
       final suffix = switch (_document) {
@@ -145,7 +180,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
       };
       setState(() {
         _resultId = id;
-        _resultUrl = '$url$id$suffix';
+        _resultUrl = url.isEmpty ? null : '$url$id$suffix';
       });
     } on Exception catch (e) {
       setState(() => _error = '$e');
@@ -170,7 +205,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
             ),
             const SizedBox(height: 8),
             CopyableText(_resultId!, label: 'Identificador'),
-            CopyableText(_resultUrl!, label: 'Link'),
+            if (_resultUrl != null) CopyableText(_resultUrl!, label: 'Link'),
             const SizedBox(height: 16),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(),
@@ -179,7 +214,8 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
           ] else ...[
             Text(
               'Abra o arquivo que o assinador frio salvou '
-              '(btc-, dash-, eth- ou sol-assinada.json).',
+              '(btc-, dash-, eth-, sol- ou xmr-assinada.json, ou as key images do '
+              'Monero).',
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(

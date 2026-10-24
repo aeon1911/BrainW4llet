@@ -6,6 +6,8 @@ import '../../features/btc/btc_signer.dart';
 import '../../features/evm/evm_send.dart';
 import '../../features/sol/sol_send.dart';
 import '../../features/transfer/transfer_document.dart';
+import '../../features/wallet/amounts.dart';
+import '../../features/xmr/xmr_signer.dart';
 import '../widgets/file_io.dart';
 import '../widgets/format.dart';
 import '../widgets/page_frame.dart';
@@ -44,6 +46,8 @@ final class PreparedSigning {
         final UtxoSignRequest request => _btc(request, seed),
         final EvmSignRequest request => _evm(request, seed),
         final SolSignRequest request => _sol(request, seed),
+        final XmrSignRequest request => _xmr(request, seed),
+        final XmrKeyImageRequest request => _xmrKeyImages(request, seed),
         _ => throw const FormatException(
           'Este arquivo não é um pedido de assinatura.',
         ),
@@ -93,6 +97,45 @@ final class PreparedSigning {
       sign: () => EvmSend.sign(request, seed),
     );
   }
+
+  static String _fmtXmr(BigInt v) => '${Amounts.format(v, 12)} XMR';
+
+  static PreparedSigning _xmr(XmrSignRequest request, SecureKey seed) {
+    final review = XmrSigner.review(request, seed);
+    return PreparedSigning(
+      title: 'Assinar envio de Monero',
+      rows: [
+        ReviewRow('Enviar para', review.destination, emphasis: true),
+        ReviewRow('Valor', _fmtXmr(review.amount), emphasis: true),
+        ReviewRow('Taxa (calculada aqui)', _fmtXmr(review.fee)),
+        if (review.change > BigInt.zero)
+          ReviewRow('Troco (volta para você)', _fmtXmr(review.change)),
+        ReviewRow('Moedas usadas', '${review.inputs}'),
+      ],
+      warning:
+          'Depois de assinar, a assinatura é conferida aqui mesmo (CLSAG e '
+          'Bulletproofs+). O arquivo assinado também leva as key images, para '
+          'a carteira online saber o que foi gasto.',
+      alerts: review.warnings,
+      sign: () => XmrSigner.sign(request, seed),
+    );
+  }
+
+  static PreparedSigning _xmrKeyImages(
+    XmrKeyImageRequest request,
+    SecureKey seed,
+  ) => PreparedSigning(
+    title: 'Gerar key images do Monero',
+    rows: [
+      ReviewRow('Moedas a conferir', '${request.knownOutputs.length}'),
+      const ReviewRow(
+        'O que é',
+        'Key images permitem à carteira online saber quais moedas já foram '
+            'gastas. Não permitem gastar nada.',
+      ),
+    ],
+    sign: () => XmrSigner.keyImages(request, seed),
+  );
 
   static PreparedSigning _sol(SolSignRequest request, SecureKey seed) {
     final review = SolSend.review(request);

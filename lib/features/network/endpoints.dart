@@ -17,6 +17,8 @@ final class Endpoints {
     this.dashInsight,
     this.dashExplorerTx,
     this.dashExplorerSuffix = '',
+    required this.xmrNode,
+    required this.xmrExplorerTx,
   });
 
   /// API Esplora (mempool.space).
@@ -41,6 +43,11 @@ final class Endpoints {
   final String? dashExplorerTx;
   final String dashExplorerSuffix;
 
+  /// Nó Monero (RPC restrito). Recebe a varredura de blocos; nunca a view
+  /// key (a detecção das suas saídas acontece no seu computador).
+  final String xmrNode;
+  final String xmrExplorerTx;
+
   static Endpoints defaults(WalletNetwork network) => switch (network) {
     WalletNetwork.mainnet => Endpoints(
       btcEsplora: Uri.parse('https://mempool.space/api'),
@@ -55,6 +62,8 @@ final class Endpoints {
       dashInsight: Uri.parse('https://insight.dash.org/insight-api'),
       dashExplorerTx: 'https://chainz.cryptoid.info/dash/tx.dws?',
       dashExplorerSuffix: '.htm',
+      xmrNode: 'https://xmr-node.cakewallet.com:18081',
+      xmrExplorerTx: 'https://xmrchain.net/tx/',
     ),
     WalletNetwork.testnet => Endpoints(
       btcEsplora: Uri.parse('https://mempool.space/testnet4/api'),
@@ -66,6 +75,9 @@ final class Endpoints {
       solRpc: Uri.parse('https://api.devnet.solana.com'),
       solExplorerTx: 'https://solscan.io/tx/',
       solExplorerSuffix: '?cluster=devnet',
+      // Stagenet: os nós públicos só respondem em HTTP (rede sem valor).
+      xmrNode: 'http://stagenet.xmr-tw.org:38081',
+      xmrExplorerTx: 'https://stagenet.xmrchain.net/tx/',
     ),
   };
 }
