@@ -24,7 +24,6 @@ abstract final class Bip39Seed {
   static const int seedBytes = 64;
   static const int _pbkdf2Rounds = 2048;
   static final List<int> _saltPrefix = ascii.encode('mnemonic');
-  static final RegExp _whitespace = RegExp(r'\s+', unicode: true);
 
   /// Gera uma mnemônica nova com o CSPRNG da libsodium (`randombytes_buf`).
   static List<String> generateMnemonic() {
@@ -36,17 +35,69 @@ abstract final class Bip39Seed {
     }
   }
 
-  /// Minúsculas, espaços colapsados e NFKD (exigido pelo BIP-39).
+  static const Set<int> _validWordCounts = {12, 15, 18, 21, 24};
+  static final List<String> _wordList = Bip39Languages.english.wordList;
+  static final Set<String> _words = _wordList.toSet();
+  // Numeração copiada da tela ("1.", "02)", "3-") colada ou não à palavra.
+  static final RegExp _numbering = RegExp(r'^\d+[.):\-]*');
+  static final RegExp _separators = RegExp(r'[\s,;]+', unicode: true);
+
+  /// Forma canônica da mnemônica digitada: minúsculas, NFKD, sem numeração,
+  /// separada por um espaço e com abreviações de 4 letras expandidas (no
+  /// BIP-39 em inglês, as 4 primeiras letras identificam a palavra).
+  ///
+  /// Para uma mnemônica já correta, o resultado é ela mesma normalizada,
+  /// então a seed derivada não muda.
   static String normalizeMnemonic(String mnemonic) =>
-      unorm.nfkd(mnemonic.toLowerCase().trim().replaceAll(_whitespace, ' '));
+      _tokens(mnemonic).join(' ');
+
+  static List<String> _tokens(String mnemonic) => [
+    for (final raw in unorm.nfkd(mnemonic.toLowerCase()).split(_separators))
+      if (raw.replaceFirst(_numbering, '') case final token
+          when token.isNotEmpty)
+        _expand(token),
+  ];
+
+  static String _expand(String token) {
+    if (token.length < 4 || _words.contains(token)) return token;
+    final matches = _wordList.where((w) => w.startsWith(token)).take(2);
+    return matches.length == 1 ? matches.first : token;
+  }
 
   /// Valida palavras e checksum (lista em inglês).
-  static bool isValid(String mnemonic) {
-    try {
-      return Bip39MnemonicValidator().isValid(normalizeMnemonic(mnemonic));
-    } on Exception {
-      return false;
+  static bool isValid(String mnemonic) => describeProblem(mnemonic) == null;
+
+  /// Explica o que está errado na mnemônica, ou `null` se ela é válida.
+  /// Aponta só posições, nunca repete as palavras digitadas.
+  static String? describeProblem(String mnemonic) {
+    final tokens = _tokens(mnemonic);
+    if (tokens.isEmpty) return 'Digite as palavras da seed.';
+
+    final unknown = [
+      for (var i = 0; i < tokens.length; i++)
+        if (!_words.contains(tokens[i])) i + 1,
+    ];
+    if (unknown.isNotEmpty) {
+      final positions = unknown.join(', ');
+      return unknown.length == 1
+          ? 'A palavra nº $positions não existe na lista BIP-39. '
+                'Confira a grafia.'
+          : 'As palavras nº $positions não existem na lista BIP-39. '
+                'Confira a grafia.';
     }
+
+    if (!_validWordCounts.contains(tokens.length)) {
+      return 'Foram digitadas ${tokens.length} palavras; uma seed tem 24 '
+          '(ou 12, 15, 18, 21).';
+    }
+
+    try {
+      if (Bip39MnemonicValidator().isValid(tokens.join(' '))) return null;
+    } on Exception {
+      // Cai na mensagem de checksum abaixo.
+    }
+    return 'Todas as palavras existem, mas a combinação não fecha '
+        '(checksum): alguma palavra está trocada ou fora de ordem.';
   }
 
   /// Deriva a seed de 64 bytes em memória protegida. [lifeKey] não é
@@ -56,7 +107,7 @@ abstract final class Bip39Seed {
     required SecureKey lifeKey,
   }) {
     final normalized = normalizeMnemonic(mnemonic);
-    if (!isValid(normalized)) {
+    if (describeProblem(normalized) != null) {
       // Nunca inclua a mnemônica em mensagens de erro.
       throw ArgumentError('Mnemônica BIP-39 inválida.');
     }

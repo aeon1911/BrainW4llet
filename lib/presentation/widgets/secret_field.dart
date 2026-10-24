@@ -9,19 +9,21 @@ class SecretField extends StatefulWidget {
     required this.label,
     this.maxLines = 1,
     this.textInputAction = TextInputAction.next,
+    this.initiallyVisible = false,
   });
 
   final TextEditingController controller;
   final String label;
   final int maxLines;
   final TextInputAction textInputAction;
+  final bool initiallyVisible;
 
   @override
   State<SecretField> createState() => _SecretFieldState();
 }
 
 class _SecretFieldState extends State<SecretField> {
-  bool _visible = false;
+  late bool _visible = widget.initiallyVisible;
 
   @override
   Widget build(BuildContext context) {

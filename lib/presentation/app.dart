@@ -16,20 +16,10 @@ class _BrainW4lletAppState extends State<BrainW4lletApp> {
   @override
   void initState() {
     super.initState();
-    SessionGuard.instance
-      ..attach()
-      ..register(_backToHome);
+    // Cada tela com segredos se registra no SessionGuard e se apaga sozinha;
+    // a carteira online (sem chaves) continua aberta.
+    SessionGuard.instance.attach();
   }
-
-  @override
-  void dispose() {
-    SessionGuard.instance.unregister(_backToHome);
-    super.dispose();
-  }
-
-  // Ao sair do primeiro plano, nenhuma tela com dados sensíveis sobrevive.
-  void _backToHome() =>
-      _navigatorKey.currentState?.popUntil((route) => route.isFirst);
 
   @override
   Widget build(BuildContext context) {
@@ -65,6 +55,7 @@ class _PrivacyCover extends StatelessWidget {
           child,
           if (obscured)
             const Positioned.fill(
+              key: Key('privacy-cover'),
               child: ColoredBox(
                 color: Color(0xFF0B1512),
                 child: Center(

@@ -38,14 +38,19 @@ Mudar **qualquer** item abaixo altera as chaves derivadas. Para evoluir, crie um
 - `lifeKey = Argon2id v1.3`, m = 524288 KiB (512 MiB), t = 4, p = 1, 32 bytes.
 - `seed = PBKDF2-HMAC-SHA512(NFKD(mnemônica), "mnemonic" || hex_minúsculo(lifeKey), 2048)`
   (BIP-39 padrão).
-- Endereços de conferência: ETH `m/44'/60'/0'/0/0`, BTC P2WPKH `m/84'/0'/0'/0/0`.
+- Caminhos por moeda (`lib/features/wallet/watch_only.dart`, congelados quando houver fundos):
+  BTC `m/84'/0'/0'` (zpub, P2WPKH) · ETH/EVM `m/44'/60'/0'/0/0` ·
+  SOL `m/44'/501'/0'/0'` (SLIP-10, igual Phantom/Solflare) · DASH `m/44'/5'/0'` (xpub) ·
+  XMR `m/44'/128'/0'/0/0` secp256k1 → spend = sc_reduce(Keccak256(priv)), view = sc_reduce(Keccak256(spend)).
+  Atenção: `deriveDefaultPath` da `blockchain_utils` para Solana para em `m/44'/501'/0'`; não usar.
 
 ## Verificação
 
 - Argon2id: vetores golden gerados com `openssl kdf ... ARGON2ID` (OpenSSL 3.6, validado
   antes contra a RFC 9106 §5.3), inclusive com os parâmetros de produção.
 - PBKDF2/BIP-39: vetor oficial (`TREZOR`) e vetores calculados com `hashlib` (Python).
-- Endereços: vetor público do BIP-84 e endereço Ethereum de referência de "abandon … about".
+- Endereços: vetor oficial do BIP-84, endereço Ethereum de referência e, para SOL/DASH/XMR,
+  implementação independente em Python puro (SOL confere com o Phantom) para "abandon … about".
 - libsodium: o código-fonte embutido no pacote `sodium` 4.1.2
   (`3rdparty/libsodium-1.0.22-stable.tar.gz`) tem assinatura minisign válida da chave
   da libsodium `RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3`. Reverifique

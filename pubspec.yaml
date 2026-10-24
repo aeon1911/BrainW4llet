@@ -19,6 +19,9 @@ dependencies:
   # Decomposição Unicode (NFKD/NFC) para normalização das respostas.
   unorm_dart: 0.3.3
   meta: ^1.15.0
+  bitcoin_base: 7.3.0
+  on_chain: 8.1.0
+  file_selector: 1.1.0
 
 dev_dependencies:
   flutter_test:

@@ -1,10 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter/widgets.dart';
 
 /// Encerra a sessão sensível quando o app sai do primeiro plano.
 ///
-/// - `inactive`: só cobre a tela (evita que o snapshot do seletor de apps
-///   capture seed ou endereços), sem apagar nada, porque o iOS também entra
-///   nesse estado ao abrir a Central de Controle ou o Face ID.
+/// - `inactive` (só celular): cobre a tela (evita que o snapshot do seletor
+///   de apps capture seed ou endereços), sem apagar nada, porque o iOS também
+///   entra nesse estado ao abrir a Central de Controle ou o Face ID. No
+///   desktop, `inactive` é só a janela perder o foco, e cobrir atrapalharia
+///   copiar um endereço para outro programa.
 /// - `hidden`, `paused`, `detached`: cobre a tela e chama todos os
 ///   [register]ados para descartarem seus segredos.
 final class SessionGuard with WidgetsBindingObserver {
@@ -18,6 +22,13 @@ final class SessionGuard with WidgetsBindingObserver {
   final ValueNotifier<bool> obscured = ValueNotifier(false);
 
   bool _attached = false;
+
+  static bool get _isPhone =>
+      debugIsPhoneOverride ?? (Platform.isIOS || Platform.isAndroid);
+
+  /// Simula celular/desktop nos testes.
+  @visibleForTesting
+  static bool? debugIsPhoneOverride;
 
   void attach() {
     if (_attached) return;
@@ -42,7 +53,7 @@ final class SessionGuard with WidgetsBindingObserver {
       case AppLifecycleState.resumed:
         obscured.value = false;
       case AppLifecycleState.inactive:
-        obscured.value = true;
+        if (_isPhone) obscured.value = true;
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:

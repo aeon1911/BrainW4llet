@@ -4,22 +4,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('tela inicial e cobertura ao sair do primeiro plano', (
+  tearDown(() => SessionGuard.debugIsPhoneOverride = null);
+
+  testWidgets('tela inicial e cobertura ao sair do primeiro plano (celular)', (
     tester,
   ) async {
+    SessionGuard.debugIsPhoneOverride = true;
     await tester.pumpWidget(const BrainW4lletApp());
-    expect(find.text('Abrir carteira'), findsOneWidget);
-    expect(find.byIcon(Icons.lock), findsNothing);
+    expect(find.text('Carteira online'), findsOneWidget);
+    expect(find.byKey(const Key('privacy-cover')), findsNothing);
 
     SessionGuard.instance.didChangeAppLifecycleState(
       AppLifecycleState.inactive,
     );
     await tester.pump();
-    expect(find.byIcon(Icons.lock), findsOneWidget);
+    expect(find.byKey(const Key('privacy-cover')), findsOneWidget);
 
     SessionGuard.instance.didChangeAppLifecycleState(AppLifecycleState.resumed);
     await tester.pump();
-    expect(find.byIcon(Icons.lock), findsNothing);
+    expect(find.byKey(const Key('privacy-cover')), findsNothing);
   });
 
   testWidgets('ir para segundo plano apaga a seed gerada e volta ao início', (
@@ -34,6 +37,6 @@ void main() {
     SessionGuard.instance.didChangeAppLifecycleState(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
     expect(find.textContaining('24.'), findsNothing);
-    expect(find.text('Abrir carteira'), findsOneWidget);
+    expect(find.text('Carteira online'), findsOneWidget);
   });
 }

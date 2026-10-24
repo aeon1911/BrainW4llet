@@ -207,4 +207,26 @@ mkdir -p build/ipa/Payload && cp -R build/ios/iphoneos/Runner.app build/ipa/Payl
    `flutter_secure_storage` e sem pacotes de rede. Sem Riverpod/Bloc por enquanto (estado
    local simples; menos dependências).
 4. IPA de teste: **Codemagic** (`codemagic.yaml` + `tool/build_ipa.sh`). Versão final: build local num Mac.
-5. **Pendente:** Apple ID gratuito (7 dias) ou conta de desenvolvedor paga (1 ano).
+5. ~~Apple ID gratuito ou conta paga~~: o sideload com Apple ID gratuito parou de funcionar em
+   set/2026. Por ora o app roda como AppImage (Linux).
+
+### 2026-10-24: carteira funcional no modelo Electrum
+
+6. O app tem dois papéis separados:
+   - **Assinador frio** (`lib/presentation/unlock_screen.dart`, `cold/`): seed + Chaves de Vida,
+     exporta a carteira somente leitura e assina. **Não instancia nenhum cliente de rede.**
+   - **Carteira online** (`lib/presentation/online/`): abre o arquivo somente leitura (zpub/vpub,
+     endereços ETH/SOL), mostra saldos e histórico, monta transações não assinadas e transmite as
+     assinadas. **Não tem nenhuma chave privada.**
+   - Entre os dois, arquivos JSON (`lib/features/transfer/transfer_document.dart`): PSBT (BTC),
+     EIP-1559 não assinada (ETH) e mensagem legacy (SOL).
+7. O assinador nunca confia nos metadados: destino, valores, troco e taxa são recalculados a partir
+   da própria transação, e ele confere que cada entrada/remetente pertence à seed. Por enquanto,
+   ETH e SOL só assinam transferências nativas simples (sem contratos ou tokens).
+8. Servidores públicos (configuráveis no código, `lib/features/network/endpoints.dart`):
+   mempool.space, publicnode.com + Blockscout e o RPC oficial da Solana. Existe uma rede de **teste**
+   (testnet4, Sepolia, devnet) para exercitar o fluxo sem dinheiro real.
+9. Assinaturas validadas por implementações independentes em Python (BIP-143 + ECDSA, ecrecover,
+   Ed25519), e esses valores viraram testes permanentes.
+10. Pendências: DASH (fase 2), XMR (fase 3), tokens ERC-20/SPL, transferência por QR e durable nonce
+    na Solana (hoje o pedido expira em ~1 minuto).

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=BrainW4llet
+Comment=Cold wallet sem persistência
+Exec=brainw4llet
+Icon=brainw4llet
+Categories=Utility;
+Terminal=false
+StartupWMClass=com.brainw4llet.brainw4llet

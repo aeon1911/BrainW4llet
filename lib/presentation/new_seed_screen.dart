@@ -24,13 +24,16 @@ class _NewSeedScreenState extends State<NewSeedScreen> {
   @override
   void dispose() {
     SessionGuard.instance.unregister(_wipe);
-    _wipe();
+    _words = const [];
     super.dispose();
   }
 
   // `String` não pode ser zerada; soltar as referências é o que está ao
-  // alcance do Dart.
-  void _wipe() => _words = const [];
+  // alcance do Dart. A tela também se fecha.
+  void _wipe() {
+    _words = const [];
+    if (mounted) Navigator.of(context).maybePop();
+  }
 
   @override
   Widget build(BuildContext context) {

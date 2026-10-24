@@ -89,6 +89,63 @@ void main() {
     lifeKey.dispose();
   });
 
+  group('diagnóstico da seed digitada', () {
+    final words = _abandon12.split(' ');
+
+    test('aceita numeração copiada da tela', () {
+      final numbered = [
+        for (var i = 0; i < words.length; i++) '${i + 1}. ${words[i]}',
+      ].join('\n');
+      expect(Bip39Seed.describeProblem(numbered), isNull);
+      expect(Bip39Seed.normalizeMnemonic(numbered), _abandon12);
+      expect(
+        Bip39Seed.normalizeMnemonic('1.abandon, 2)abandon'),
+        'abandon abandon',
+      );
+    });
+
+    test('expande abreviações de 4 letras', () {
+      final short = [for (final w in words) w.substring(0, 4)].join(' ');
+      expect(Bip39Seed.normalizeMnemonic(short), _abandon12);
+      expect(Bip39Seed.isValid(short), isTrue);
+    });
+
+    test('aponta a posição da palavra inexistente sem repeti-la', () {
+      final typo = [...words]..[4] = 'abacaxi';
+      final message = Bip39Seed.describeProblem(typo.join(' '))!;
+      expect(message, contains('nº 5'));
+      expect(message, isNot(contains('abacaxi')));
+    });
+
+    test('informa quantidade errada de palavras', () {
+      expect(
+        Bip39Seed.describeProblem(words.take(11).join(' ')),
+        contains('11 palavras'),
+      );
+    });
+
+    test('distingue erro de checksum (troca ou ordem)', () {
+      expect(
+        Bip39Seed.describeProblem('${'abandon ' * 11}abandon'),
+        contains('checksum'),
+      );
+    });
+
+    test('formas alternativas derivam a mesma seed', () {
+      final lifeKey = sodium.secureCopy(
+        Uint8List.fromList(_unhex(_lifeKeyCheap)),
+      );
+      final numbered = [
+        for (final (i, w) in _abandon24.split(' ').indexed)
+          '${i + 1}) ${(w.length > 4 ? w.substring(0, 4) : w).toUpperCase()}',
+      ].join('  ');
+      final a = Bip39Seed.deriveSeed(mnemonic: numbered, lifeKey: lifeKey);
+      expect(_hex(a.extractBytes()), _seedCheap);
+      a.dispose();
+      lifeKey.dispose();
+    });
+  });
+
   test('deriveSeed recusa mnemônica inválida sem vazar o conteúdo', () {
     final lifeKey = sodium.secureRandom(32);
     expect(
