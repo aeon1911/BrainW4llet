@@ -1,0 +1,192 @@
+# Compila Linux (AppImage + tar.gz), Windows (zip) e Android (APK) e, numa
+# tag v*, publica tudo num GitHub Release com os SHA-256.
+# Em pull requests só compila, para validar antes da tag.
+#
+# Para fundos reais, prefira compilar você mesmo a partir do código
+# (docs/AVALIACAO_SEGURANCA.md §6–7): estes binários vêm de máquinas do GitHub.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: 3.47.8 # mesma versão usada no desenvolvimento
+  # Impressão digital SHA-256 do certificado de release do Android (pública).
+  ANDROID_CERT_SHA256: 4E:50:C0:A3:48:9E:16:5F:85:94:C1:32:C9:58:5E:CB:AA:D8:A4:E9:27:DD:86:B5:EA:A8:C9:08:15:B6:C9:39
+
+jobs:
+  test:
+    name: Análise e testes
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze
+      - run: flutter test
+
+  linux:
+    name: Linux
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependências de build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-14-dev librsvg2-bin file
+      - name: appimagetool
+        run: |
+          mkdir -p ~/development/appimagetool
+          curl -sSfL -o ~/development/appimagetool/appimagetool-x86_64.AppImage \
+            https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage
+          chmod +x ~/development/appimagetool/appimagetool-x86_64.AppImage
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: AppImage
+        run: ./tool/build_appimage.sh
+      - name: tar.gz
+        run: |
+          VERSION="$(sed -n 's/^version: *\([^+]*\).*/\1/p' pubspec.yaml)"
+          NAME="BrainW4llet-$VERSION-linux-x64"
+          mkdir -p dist
+          cp -R build/linux/x64/release/bundle "dist/$NAME"
+          tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
+          rm -rf "dist/$NAME"
+          cp build/appimage/*.AppImage dist/
+          (cd dist && sha256sum ./* > linux.sha256 && cat linux.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows
+    needs: test
+    runs-on: windows-2022
+    steps:
+      # Caminhos longos: o msbuild da libsodium passa do limite de 260.
+      - run: git config --system core.longpaths true
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter build windows --release
+      - name: zip
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([^+]+)').Matches[0].Groups[1].Value.Trim()
+          $name = "BrainW4llet-$version-windows-x64"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item -Recurse build\windows\x64\runner\Release "dist\$name"
+          Compress-Archive -Path "dist\$name" -DestinationPath "dist\$name.zip"
+          Remove-Item -Recurse "dist\$name"
+          Get-ChildItem dist -File | ForEach-Object {
+            "{0}  ./{1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+          } | Set-Content -Encoding ascii dist\windows.sha256
+          Get-Content dist\windows.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+          if-no-files-found: error
+
+  android:
+    name: Android
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: Chave de release
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64" || { echo "Secret ANDROID_KEYSTORE_BASE64 ausente"; exit 1; }
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.p12"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.p12" >> "$GITHUB_ENV"
+      - name: APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: flutter build apk --release
+      - name: Conferir certificado do APK
+        if: github.event_name != 'pull_request'
+        run: |
+          APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
+          ACTUAL="$("$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-release.apk \
+            | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr 'a-f' 'A-F' | sed 's/../&:/g;s/:$//')"
+          echo "Certificado: $ACTUAL"
+          test "$ACTUAL" = "$ANDROID_CERT_SHA256" || { echo "APK NÃO está assinado com a chave de release"; exit 1; }
+      - name: Renomear
+        run: |
+          VERSION="$(sed -n 's/^version: *\([^+]*\).*/\1/p' pubspec.yaml)"
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/BrainW4llet-$VERSION-android.apk"
+          (cd dist && sha256sum ./* > android.sha256 && cat android.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publicar release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows, android]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag confere com o pubspec
+        run: |
+          VERSION="$(sed -n 's/^version: *\([^+]*\).*/\1/p' pubspec.yaml)"
+          test "v$VERSION" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME ≠ pubspec $VERSION"; exit 1; }
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: SHA256SUMS
+        run: |
+          cd dist
+          cat linux.sha256 windows.sha256 android.sha256 | sed 's#\./##' | tr -d '\r' > SHA256SUMS
+          rm linux.sha256 windows.sha256 android.sha256
+          cat SHA256SUMS
+      - name: Criar release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "BrainW4llet $GITHUB_REF_NAME" \
+            --notes-file .github/release-notes.md \
+            --prerelease

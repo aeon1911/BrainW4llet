@@ -1,3 +1,13 @@
+// Chave de release: vem do ambiente (CI) ou de android/key.properties
+// (máquina própria, fora do git). Sem ela, o build local usa a de debug.
+val releaseKeystore = System.getenv("ANDROID_KEYSTORE_PATH")
+val releasePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+val releaseAlias = System.getenv("ANDROID_KEY_ALIAS")
+val keyProperties = java.util.Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -15,7 +25,6 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.brainw4llet.brainw4llet"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
@@ -29,11 +38,24 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            val store = releaseKeystore ?: keyProperties.getProperty("storeFile")
+            if (store != null) {
+                storeFile = file(store)
+                storeType = "pkcs12"
+                storePassword = releasePassword ?: keyProperties.getProperty("storePassword")
+                keyPassword = storePassword
+                keyAlias = releaseAlias ?: keyProperties.getProperty("keyAlias")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            val release = signingConfigs.getByName("release")
+            signingConfig =
+                if (release.storeFile != null) release else signingConfigs.getByName("debug")
         }
     }
 }
