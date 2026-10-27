@@ -1,17 +1,19 @@
-// Chave de release: vem do ambiente (CI) ou de android/key.properties
-// (máquina própria, fora do git). Sem ela, o build local usa a de debug.
-val releaseKeystore = System.getenv("ANDROID_KEYSTORE_PATH")
-val releasePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-val releaseAlias = System.getenv("ANDROID_KEY_ALIAS")
-val keyProperties = java.util.Properties().apply {
-    val file = rootProject.file("key.properties")
-    if (file.exists()) file.inputStream().use { load(it) }
-}
+import java.util.Properties
 
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Chave de release: vem do ambiente (CI) ou de android/key.properties
+// (máquina própria, fora do git). Sem ela, o build local usa a de debug.
+val releaseKeystore = System.getenv("ANDROID_KEYSTORE_PATH")
+val releasePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+val releaseAlias = System.getenv("ANDROID_KEY_ALIAS")
+val keyProperties = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
 }
 
 android {
