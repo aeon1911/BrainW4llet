@@ -35,6 +35,22 @@ final class XmrOwnedOutput {
   String? keyImage;
   bool spent;
 
+  /// Recompensa de mineração (ex.: P2Pool): exige 60 confirmações.
+  late final bool coinbase = () {
+    try {
+      return MoneroLockedPayment.deserialize(
+        BytesUtils.fromHexString(paymentHex),
+      ).output.coinbase;
+    } on Object {
+      return false; // ilegível: o assinador recusa de qualquer forma
+    }
+  }();
+
+  /// Confirmações para poder gastar.
+  int get unlockConfirmations => coinbase
+      ? XmrWatcher.coinbaseUnlockConfirmations
+      : XmrWatcher.unlockConfirmations;
+
   Map<String, Object?> toJson() => {
     'outputKey': outputKey,
     'txHash': txHash,
@@ -145,10 +161,10 @@ final class XmrBalance {
     required this.unknownSpentState,
   });
 
-  /// Pode ser gasto (10 confirmações).
+  /// Pode ser gasto (10 confirmações; 60 para recompensa de mineração).
   final BigInt unlocked;
 
-  /// Ainda bloqueado (menos de 10 confirmações).
+  /// Ainda bloqueado (aguardando confirmações).
   final BigInt locked;
 
   /// Saídas sem key image: se você gastou fora deste app, o saldo pode estar
@@ -182,6 +198,9 @@ final class XmrWatcher {
 
   /// Confirmações para uma saída poder ser gasta.
   static const int unlockConfirmations = 10;
+
+  /// Confirmações para uma recompensa de mineração poder ser gasta.
+  static const int coinbaseUnlockConfirmations = 60;
 
   /// Tempo médio de bloco do Monero.
   static const Duration blockTime = Duration(minutes: 2);
@@ -340,7 +359,7 @@ final class XmrWatcher {
     var unknown = 0;
     for (final o in cache!.outputs.where((o) => !o.spent)) {
       if (o.keyImage == null) unknown++;
-      if (o.height + unlockConfirmations <= tip) {
+      if (o.height + o.unlockConfirmations <= tip) {
         unlocked += o.amount;
       } else {
         locked += o.amount;
@@ -357,7 +376,7 @@ final class XmrWatcher {
     final tip = tipHeight ?? cache!.scannedHeight;
     return [
       for (final o in cache!.outputs)
-        if (!o.spent && o.height + unlockConfirmations <= tip) o,
+        if (!o.spent && o.height + o.unlockConfirmations <= tip) o,
     ]..sort((a, b) => b.amount.compareTo(a.amount));
   }
 

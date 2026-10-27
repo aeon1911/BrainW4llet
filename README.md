@@ -11,7 +11,7 @@ palavras com as "Chaves de Vida" (respostas pessoais → Argon2id → passphrase
 | Ethereum (ETH nativo) | ✅ | ✅ | ✅ EIP-1559 |
 | Solana (SOL nativo) | ✅ | ✅ | ✅ |
 | Dash | ✅ | ✅ | ✅ PSBT (só rede principal) |
-| Monero | só dados somente leitura | — | em desenvolvimento |
+| Monero | ✅ varredura com view key | ✅ | ✅ air-gapped (falta 1º envio real na stagenet) |
 
 ## Documentos
 

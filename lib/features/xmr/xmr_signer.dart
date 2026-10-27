@@ -92,10 +92,13 @@ abstract final class XmrSigner {
       if (locked is! MoneroLockedPayment) {
         throw XmrSignException('Entrada nº ${i + 1} em formato inesperado.');
       }
-      final unlocked = MoneroTransactionHelper.toUnlockPayment(
-        account: keys,
-        lockedOut: locked,
-      );
+      _checkRing(spendable, locked, i);
+      final unlocked = _owns(keys, locked.output)
+          ? MoneroTransactionHelper.toUnlockPayment(
+              account: keys,
+              lockedOut: locked,
+            )
+          : null;
       if (unlocked == null) {
         throw XmrSignException(
           'A entrada nº ${i + 1} não pertence a esta carteira '
@@ -217,15 +220,74 @@ abstract final class XmrSigner {
       } on Object {
         continue;
       }
+      if (!_owns(keys, locked.output)) continue; // não é nossa: ignora
       final unlocked = MoneroTransactionHelper.toUnlockPayment(
         account: keys,
         lockedOut: locked,
       );
-      if (unlocked == null) continue; // não é nossa: ignora
+      if (unlocked == null) continue;
       result[BytesUtils.toHexString(locked.output.outputPublicKey)] =
           BytesUtils.toHexString(unlocked.output.keyImage.keyImage);
     }
     return result;
+  }
+
+  /// Tamanho do anel exigido pelo consenso desde 2022 (hard fork v15).
+  static const int ringSize = 16;
+
+  /// A saída é desta seed? Confere P = Hs(derivação‖i)·G + B antes de
+  /// derivar a chave secreta (o `monero_dart` só confere num `assert`).
+  static bool _owns(MoneroAccountKeys keys, MoneroLockedOutput out) {
+    try {
+      final expected = MoneroCrypto.derivePublicKeyBytesVar(
+        derivation: out.derivation,
+        outIndex: out.realIndex,
+        basePublicKey: keys.getSpendPublicKey(out.accountIndex),
+      );
+      return BytesUtils.bytesEqual(expected, out.outputPublicKey);
+    } on Object {
+      return false;
+    }
+  }
+
+  /// Regras do anel que os nós aplicam, conferidas aqui para recusar um
+  /// pedido adulterado com uma mensagem clara: 16 membros em ordem crescente
+  /// de índice global, a saída real no seu índice e com o commitment que
+  /// corresponde ao valor declarado (senão a revisão mostraria valores
+  /// falsos).
+  static void _checkRing(
+    SpendablePayment<MoneroPayment> spendable,
+    MoneroLockedPayment locked,
+    int i,
+  ) {
+    final outs = spendable.outs;
+    final n = i + 1;
+    if (outs.length != ringSize) {
+      throw XmrSignException(
+        'O anel da entrada nº $n tem ${outs.length} membros (deveria ter '
+        '$ringSize).',
+      );
+    }
+    for (var k = 1; k < outs.length; k++) {
+      if (outs[k].index <= outs[k - 1].index) {
+        throw XmrSignException('O anel da entrada nº $n está fora de ordem.');
+      }
+    }
+    final real = spendable.realOutIndex;
+    if (real >= outs.length || outs[real].index != locked.globalIndex) {
+      throw XmrSignException(
+        'O anel da entrada nº $n não aponta para a sua saída.',
+      );
+    }
+    final commitment = RCT.commit(
+      xmrAmount: locked.output.amount,
+      mask: locked.output.mask,
+    );
+    if (!BytesUtils.bytesEqual(commitment, outs[real].key.mask)) {
+      throw XmrSignException(
+        'O valor declarado da entrada nº $n não confere com o anel. Recusado.',
+      );
+    }
   }
 
   static SpendablePayment<MoneroPayment> _decodeSpendable(String hex, int i) {
