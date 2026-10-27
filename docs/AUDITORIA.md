@@ -78,6 +78,42 @@ Verificações:
 - A sincronização foi testada ao vivo no Insight (insight.dash.org, mantido pela Dash Core Group).
 - Não existe testnet Dash pública disponível; o primeiro envio real deve ser de valor pequeno.
 
+### Adendo 2026-10-27: Monero
+
+O Monero não tem PSBT. A carteira online (só view key + chave pública de gasto) varre os blocos
+no próprio computador e encontra as saídas e seus valores. Também escolhe os decoys do anel
+(gamma, como o `wallet2`) e manda tudo ao assinador. O assinador destrava só as saídas desta seed,
+calcula a taxa exata pelo peso da transação, assina (CLSAG + Bulletproofs+) e roda `verRctSimple`
+antes de salvar. O arquivo assinado devolve as key images, para a carteira online saber o que foi
+gasto. Proteções no assinador:
+
+- **Posse:** confere P = Hs(derivação‖i)·G + B contra a seed antes de derivar a chave secreta. O
+  `monero_dart` só fazia essa conferência num `assert`: em modo debug, uma entrada alheia
+  derrubava o app com um erro cru.
+- **Anel (novo):** exige 16 membros, índices globais estritamente crescentes, a saída real no
+  índice declarado e o commitment `mask·G + valor·H` igual ao do anel. Antes, um anel fora de
+  ordem gerava uma transação que os nós recusariam, e um valor declarado falso aparecia na
+  revisão.
+- Destino de outra rede e entrada repetida são recusados. Alertas para taxa acima de 10% do valor
+  ou acima de 0,01 XMR (a taxa por byte vem da carteira online).
+- Não há roubo possível alterando valores ou anel: o consenso recusa commitments que não batem
+  com a blockchain. O pior caso é a transação ser rejeitada.
+
+Verificações:
+
+- Endereços (rede principal e stagenet) conferidos em Python, com Keccak, ed25519 e Base58
+  próprios.
+- Teste de ponta a ponta sem rede (`test/features/xmr/xmr_send_sign_test.dart`): cria uma saída
+  real para a seed, monta um anel de 16, assina, desserializa a transação e confere que o
+  destinatário decifra o valor, que o troco volta para você, que a taxa bate com a revisão e que a
+  key image é a da entrada. Também cobre "enviar tudo" com duas entradas e os ataques acima.
+- Varredura testada ao vivo na stagenet (stagenet.xmr-tw.org).
+- **Pendente:** um envio real na stagenet, transmitido e confirmado. Faça antes de usar fundos
+  reais.
+- Saídas de mineração (coinbase, ex.: P2Pool) só contam como desbloqueadas após 60 confirmações;
+  as demais, após 10.
+- Limitações: só o endereço principal (sem subendereços), um destino por envio.
+
 ## 4. Riscos residuais (não corrigíveis no código, ou aceitos)
 
 1. **O app é um só binário.** O assinador não usa a rede, mas o código de rede está compilado no

@@ -6,9 +6,13 @@ import '../../features/btc/btc_signer.dart';
 import '../../features/evm/evm_send.dart';
 import '../../features/sol/sol_send.dart';
 import '../../features/transfer/transfer_document.dart';
+import '../../features/wallet/amounts.dart';
+import '../../features/xmr/xmr_signer.dart';
 import '../widgets/file_io.dart';
 import '../widgets/format.dart';
+import '../theme/app_theme.dart';
 import '../widgets/page_frame.dart';
+import '../widgets/ui.dart';
 
 /// Uma linha da revisão.
 final class ReviewRow {
@@ -44,6 +48,8 @@ final class PreparedSigning {
         final UtxoSignRequest request => _btc(request, seed),
         final EvmSignRequest request => _evm(request, seed),
         final SolSignRequest request => _sol(request, seed),
+        final XmrSignRequest request => _xmr(request, seed),
+        final XmrKeyImageRequest request => _xmrKeyImages(request, seed),
         _ => throw const FormatException(
           'Este arquivo não é um pedido de assinatura.',
         ),
@@ -93,6 +99,45 @@ final class PreparedSigning {
       sign: () => EvmSend.sign(request, seed),
     );
   }
+
+  static String _fmtXmr(BigInt v) => '${Amounts.format(v, 12)} XMR';
+
+  static PreparedSigning _xmr(XmrSignRequest request, SecureKey seed) {
+    final review = XmrSigner.review(request, seed);
+    return PreparedSigning(
+      title: 'Assinar envio de Monero',
+      rows: [
+        ReviewRow('Enviar para', review.destination, emphasis: true),
+        ReviewRow('Valor', _fmtXmr(review.amount), emphasis: true),
+        ReviewRow('Taxa (calculada aqui)', _fmtXmr(review.fee)),
+        if (review.change > BigInt.zero)
+          ReviewRow('Troco (volta para você)', _fmtXmr(review.change)),
+        ReviewRow('Moedas usadas', '${review.inputs}'),
+      ],
+      warning:
+          'Depois de assinar, a assinatura é conferida aqui mesmo (CLSAG e '
+          'Bulletproofs+). O arquivo assinado também leva as key images, para '
+          'a carteira online saber o que foi gasto.',
+      alerts: review.warnings,
+      sign: () => XmrSigner.sign(request, seed),
+    );
+  }
+
+  static PreparedSigning _xmrKeyImages(
+    XmrKeyImageRequest request,
+    SecureKey seed,
+  ) => PreparedSigning(
+    title: 'Gerar key images do Monero',
+    rows: [
+      ReviewRow('Moedas a conferir', '${request.knownOutputs.length}'),
+      const ReviewRow(
+        'O que é',
+        'Key images permitem à carteira online saber quais moedas já foram '
+            'gastas. Não permitem gastar nada.',
+      ),
+    ],
+    sign: () => XmrSigner.keyImages(request, seed),
+  );
 
   static PreparedSigning _sol(SolSignRequest request, SecureKey seed) {
     final review = SolSend.review(request);
@@ -163,9 +208,19 @@ class _SignReviewScreenState extends State<SignReviewScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ModeTheme(
+    mode: AppMode.cold,
+    child: Builder(builder: _build),
+  );
+
+  Widget _build(BuildContext context) {
     final theme = Theme.of(context);
+    final p = AppPalette.of(context);
     final prepared = widget.prepared;
+    // As duas primeiras linhas em destaque (destino e valor) viram o resumo.
+    final main = prepared.rows.where((r) => r.emphasis).toList();
+    final rest = prepared.rows.where((r) => !r.emphasis).toList();
+    final blocked = prepared.alerts.isNotEmpty && !_alertsAccepted;
     return Scaffold(
       appBar: AppBar(title: Text(prepared.title)),
       body: PageFrame(
@@ -173,82 +228,82 @@ class _SignReviewScreenState extends State<SignReviewScreen> {
           Text(
             'Confira com calma. Estes dados foram lidos da própria transação, '
             'não do que a carteira online declarou.',
-            style: theme.textTheme.bodyMedium,
+            style: theme.textTheme.bodyMedium?.copyWith(color: p.muted),
           ),
-          const SizedBox(height: 12),
-          for (final row in prepared.rows)
-            Card(
-              child: ListTile(
-                title: Text(row.label, style: theme.textTheme.labelLarge),
-                subtitle: SelectableText(
-                  row.value,
-                  style: TextStyle(
-                    fontFamily: 'monospace',
-                    fontWeight: row.emphasis ? FontWeight.bold : null,
-                  ),
-                ),
-              ),
-            ),
-          if (prepared.warning != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              prepared.warning!,
-              style: TextStyle(color: theme.colorScheme.tertiary),
-            ),
-          ],
-          if (prepared.alerts.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Card(
-              color: theme.colorScheme.errorContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'ATENÇÃO',
-                      style: TextStyle(
-                        color: theme.colorScheme.onErrorContainer,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    for (final alert in prepared.alerts)
-                      Text(
-                        '• $alert',
-                        style: TextStyle(
-                          color: theme.colorScheme.onErrorContainer,
-                        ),
-                      ),
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      value: _alertsAccepted,
-                      onChanged: (v) =>
-                          setState(() => _alertsAccepted = v ?? false),
-                      title: Text(
-                        'Entendi e quero assinar mesmo assim',
-                        style: TextStyle(
-                          color: theme.colorScheme.onErrorContainer,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-          if (_error != null) ...[
-            const SizedBox(height: 8),
-            Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-          ],
           const SizedBox(height: 16),
-          FilledButton.icon(
-            icon: const Icon(Icons.draw),
-            label: const Text('Assinar e salvar arquivo'),
-            onPressed: _busy || (prepared.alerts.isNotEmpty && !_alertsAccepted)
-                ? null
-                : _signAndSave,
-          ),
+          if (main.isNotEmpty)
+            AppCard(
+              glow: p.accent,
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final (i, row) in main.indexed) ...[
+                    if (i > 0) const SizedBox(height: 18),
+                    Text(
+                      row.label,
+                      style: TextStyle(color: p.muted, fontSize: 13),
+                    ),
+                    const SizedBox(height: 6),
+                    if (_looksLikeAmount(row.value))
+                      AmountText(row.value, fontSize: 30)
+                    else
+                      SelectableText(
+                        row.value,
+                        style: AppTheme.mono(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          height: 1.5,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          if (rest.isNotEmpty)
+            AppCard(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: Column(
+                children: [
+                  for (final (i, row) in rest.indexed) ...[
+                    if (i > 0) Divider(color: p.outline),
+                    KeyValueRow(row.label, row.value),
+                  ],
+                ],
+              ),
+            ),
+          if (prepared.warning != null)
+            Notice(kind: NoticeKind.info, text: prepared.warning),
+          if (prepared.alerts.isNotEmpty)
+            Notice(
+              kind: NoticeKind.danger,
+              title: 'ATENÇÃO',
+              children: [
+                for (final alert in prepared.alerts)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text('• $alert'),
+                  ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  activeColor: p.danger,
+                  value: _alertsAccepted,
+                  onChanged: (v) =>
+                      setState(() => _alertsAccepted = v ?? false),
+                  title: const Text('Entendi e quero assinar mesmo assim'),
+                ),
+              ],
+            ),
+          if (_error != null) Notice(kind: NoticeKind.danger, text: _error),
           const SizedBox(height: 8),
+          FilledButton.icon(
+            icon: const Icon(Icons.draw_outlined),
+            label: const Text('Assinar e salvar arquivo'),
+            onPressed: _busy || blocked ? null : _signAndSave,
+          ),
+          const SizedBox(height: 10),
           OutlinedButton(
             onPressed: _busy ? null : () => Navigator.of(context).pop(),
             child: const Text('Cancelar'),
@@ -257,4 +312,8 @@ class _SignReviewScreenState extends State<SignReviewScreen> {
       ),
     );
   }
+
+  /// "0.01 BTC" → valor; endereços e textos longos não.
+  static bool _looksLikeAmount(String value) =>
+      RegExp(r'^[+\-−]?[\d.,]+ [A-Z]{2,5}$').hasMatch(value);
 }

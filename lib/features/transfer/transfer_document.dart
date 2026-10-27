@@ -95,8 +95,66 @@ sealed class TransferDocument {
         txBase64: str('tx'),
         signature: str('signature'),
       ),
+      XmrSignRequest.kindName => XmrSignRequest(
+        network: network,
+        sources: _strings(json['sources']),
+        knownOutputs: _strings(json['knownOutputs']),
+        destinations: _destinations(json['destinations']),
+        feeEstimate: _object(json['feeEstimate']),
+      ),
+      XmrSignedTransaction.kindName => XmrSignedTransaction(
+        network: network,
+        txHex: str('txHex'),
+        txHash: str('txHash'),
+        keyImages: _stringMap(json['keyImages']),
+      ),
+      XmrKeyImageRequest.kindName => XmrKeyImageRequest(
+        network: network,
+        knownOutputs: _strings(json['knownOutputs']),
+      ),
+      XmrKeyImages.kindName => XmrKeyImages(
+        network: network,
+        keyImages: _stringMap(json['keyImages']),
+      ),
       _ => throw const FormatException('Tipo de arquivo desconhecido.'),
     };
+  }
+
+  static List<String> _strings(Object? value) {
+    if (value is List && value.every((e) => e is String)) {
+      return value.cast<String>();
+    }
+    throw const FormatException('Lista inválida no arquivo.');
+  }
+
+  static Map<String, String> _stringMap(Object? value) {
+    if (value is Map && value.values.every((e) => e is String)) {
+      return value.map((k, v) => MapEntry('$k', v as String));
+    }
+    throw const FormatException('Mapa inválido no arquivo.');
+  }
+
+  static Map<String, Object?> _object(Object? value) {
+    if (value is Map<String, Object?>) return value;
+    throw const FormatException('Objeto inválido no arquivo.');
+  }
+
+  static List<XmrDestination> _destinations(Object? value) {
+    if (value is! List || value.isEmpty) {
+      throw const FormatException('Destinos ausentes.');
+    }
+    return [
+      for (final d in value)
+        if (d is Map &&
+            d['address'] is String &&
+            BigInt.tryParse('${d['amount']}') != null)
+          (
+            address: d['address'] as String,
+            amount: BigInt.parse('${d['amount']}'),
+          )
+        else
+          throw const FormatException('Destino inválido.'),
+    ];
   }
 
   static List<BtcPath> _paths(Object? value) {
@@ -278,4 +336,122 @@ final class SolSignedTransaction extends TransferDocument {
 
   @override
   Map<String, Object?> payload() => {'tx': txBase64, 'signature': signature};
+}
+
+/// Destino de um envio Monero (valor em piconeros).
+typedef XmrDestination = ({String address, BigInt amount});
+
+/// Pedido de assinatura Monero: as entradas já vêm com o anel de decoys
+/// escolhido pela carteira online (que não tem a chave de gasto).
+final class XmrSignRequest extends TransferDocument {
+  const XmrSignRequest({
+    required WalletNetwork network,
+    required this.sources,
+    required this.knownOutputs,
+    required this.destinations,
+    required this.feeEstimate,
+  }) : super(network);
+
+  static const String kindName = 'xmr-sign-request';
+
+  /// `SpendablePayment<MoneroLockedPayment>` serializados (hex): saída real
+  /// + anel de decoys.
+  final List<String> sources;
+
+  /// Todas as saídas conhecidas da carteira (`MoneroLockedPayment` em hex),
+  /// para o assinador devolver as key images e a online saber o que gastou.
+  final List<String> knownOutputs;
+
+  final List<XmrDestination> destinations;
+
+  /// Resposta de `get_fee_estimate` do nó (taxa por byte e máscara).
+  final Map<String, Object?> feeEstimate;
+
+  @override
+  String get kind => kindName;
+
+  @override
+  String get suggestedFileName => 'xmr-para-assinar.json';
+
+  @override
+  Map<String, Object?> payload() => {
+    'sources': sources,
+    'knownOutputs': knownOutputs,
+    'destinations': [
+      for (final d in destinations)
+        {'address': d.address, 'amount': d.amount.toString()},
+    ],
+    'feeEstimate': feeEstimate,
+  };
+}
+
+final class XmrSignedTransaction extends TransferDocument {
+  const XmrSignedTransaction({
+    required WalletNetwork network,
+    required this.txHex,
+    required this.txHash,
+    required this.keyImages,
+  }) : super(network);
+
+  static const String kindName = 'xmr-signed';
+
+  final String txHex;
+  final String txHash;
+
+  /// Chave pública da saída (hex) → key image (hex), de todas as saídas
+  /// conhecidas. Não permite gastar; só revela quais foram gastas.
+  final Map<String, String> keyImages;
+
+  @override
+  String get kind => kindName;
+
+  @override
+  String get suggestedFileName => 'xmr-assinada.json';
+
+  @override
+  Map<String, Object?> payload() => {
+    'txHex': txHex,
+    'txHash': txHash,
+    'keyImages': keyImages,
+  };
+}
+
+/// Pedido de key images (sem envio), para a carteira online descobrir quais
+/// saídas já foram gastas (ex.: depois de perder o cache).
+final class XmrKeyImageRequest extends TransferDocument {
+  const XmrKeyImageRequest({
+    required WalletNetwork network,
+    required this.knownOutputs,
+  }) : super(network);
+
+  static const String kindName = 'xmr-key-image-request';
+
+  final List<String> knownOutputs;
+
+  @override
+  String get kind => kindName;
+
+  @override
+  String get suggestedFileName => 'xmr-pedido-key-images.json';
+
+  @override
+  Map<String, Object?> payload() => {'knownOutputs': knownOutputs};
+}
+
+final class XmrKeyImages extends TransferDocument {
+  const XmrKeyImages({required WalletNetwork network, required this.keyImages})
+    : super(network);
+
+  static const String kindName = 'xmr-key-images';
+
+  final Map<String, String> keyImages;
+
+  @override
+  String get kind => kindName;
+
+  @override
+  String get suggestedFileName => 'xmr-key-images.json';
+
+  @override
+  Map<String, Object?> payload() => {'keyImages': keyImages};
 }

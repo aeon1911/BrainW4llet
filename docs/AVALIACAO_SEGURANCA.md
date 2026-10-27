@@ -228,5 +228,5 @@ mkdir -p build/ipa/Payload && cp -R build/ios/iphoneos/Runner.app build/ipa/Payl
    (testnet4, Sepolia, devnet) para exercitar o fluxo sem dinheiro real.
 9. Assinaturas validadas por implementações independentes em Python (BIP-143 + ECDSA, ecrecover,
    Ed25519), e esses valores viraram testes permanentes.
-10. Pendências: DASH (fase 2), XMR (fase 3), tokens ERC-20/SPL, transferência por QR e durable nonce
+10. Pendências: primeiro envio real de XMR na stagenet, tokens ERC-20/SPL, transferência por QR e durable nonce
     na Solana (hoje o pedido expira em ~1 minuto).

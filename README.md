@@ -11,7 +11,13 @@ palavras com as "Chaves de Vida" (respostas pessoais → Argon2id → passphrase
 | Ethereum (ETH nativo) | ✅ | ✅ | ✅ EIP-1559 |
 | Solana (SOL nativo) | ✅ | ✅ | ✅ |
 | Dash | ✅ | ✅ | ✅ PSBT (só rede principal) |
-| Monero | só dados somente leitura | — | em desenvolvimento |
+| Monero | ✅ varredura com view key | ✅ | ✅ air-gapped (falta 1º envio real na stagenet) |
+
+## Interface
+
+Tema escuro e claro (segue o sistema), com acento verde-menta na carteira online e
+azul-gelo no assinador frio. Fontes Inter e JetBrains Mono (licença OFL) embutidas em
+`assets/fonts/`: o app nunca baixa nada para desenhar a tela.
 
 ## Documentos
 

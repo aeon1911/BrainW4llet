@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 /// Falha de rede ou resposta inesperada de um servidor.
 final class NetworkException implements Exception {
@@ -35,6 +36,35 @@ final class HttpJson {
   Future<Object?> postJson(Uri uri, Object body) async => jsonDecode(
     await postText(uri, jsonEncode(body), contentType: 'application/json'),
   );
+
+  /// POST binário cru; devolve (status, corpo). Não lança em status de erro:
+  /// quem chama interpreta (usado pelo provedor Monero).
+  Future<(int, List<int>)> postBytes(
+    Uri uri,
+    List<int>? body,
+    Map<String, String> headers,
+  ) async {
+    for (var attempt = 0; ; attempt++) {
+      try {
+        final request = await _client.openUrl('POST', uri).timeout(timeout);
+        headers.forEach(request.headers.set);
+        // O servidor do monerod (epee) não aceita corpo "chunked".
+        request.contentLength = body?.length ?? 0;
+        if (body != null) request.add(body);
+        final response = await request.close().timeout(timeout);
+        final bytes = await response
+            .fold<BytesBuilder>(BytesBuilder(copy: false), (b, d) => b..add(d))
+            .timeout(timeout * 4);
+        if (response.statusCode == 429 && attempt < maxRetries) {
+          await Future<void>.delayed(Duration(seconds: 1 << attempt));
+          continue;
+        }
+        return (response.statusCode, bytes.takeBytes());
+      } on Exception catch (e) {
+        throw NetworkException('Falha ao acessar ${uri.host}: $e');
+      }
+    }
+  }
 
   /// Chamada JSON-RPC 2.0; devolve `result` ou lança [NetworkException].
   Future<Object?> rpc(
@@ -102,7 +132,9 @@ final class HttpJson {
       final request = await _client.openUrl(method, uri).timeout(timeout);
       if (body != null) {
         request.headers.contentType = ContentType.parse(contentType!);
-        request.write(body);
+        final bytes = utf8.encode(body);
+        request.contentLength = bytes.length;
+        request.add(bytes);
       }
       final response = await request.close().timeout(timeout);
       final text = await response

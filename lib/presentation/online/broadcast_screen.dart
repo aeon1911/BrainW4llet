@@ -11,8 +11,12 @@ import '../../features/transfer/transfer_document.dart';
 import '../widgets/copy_text.dart';
 import '../widgets/file_io.dart';
 import '../widgets/format.dart';
+import '../theme/app_theme.dart';
 import '../widgets/page_frame.dart';
+import '../widgets/ui.dart';
 import 'online_services.dart';
+import '../../features/xmr/xmr_wallet.dart';
+import 'xmr_tab.dart';
 
 /// Abre a transação assinada pelo assinador frio, mostra o que ela faz e
 /// transmite para a rede.
@@ -74,7 +78,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
         return [
           '${doc.coin.name} · txid ${shorten(doc.txid)}',
           for (final out in tx.outputs)
-            '→ ${BitcoinScriptUtils.generateAddressFromScriptPubKey(out.scriptPubKey).toAddress(network)}: '
+            'para ${BitcoinScriptUtils.generateAddressFromScriptPubKey(out.scriptPubKey).toAddress(network)}: '
                 '${formatUtxo(doc.coin, out.amount)}',
         ];
       case final EvmSignedTransaction doc:
@@ -83,7 +87,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
         );
         return [
           'Ethereum · hash ${shorten(doc.txHash)}',
-          '→ ${tx.to?.address}: ${formatEth(tx.value)}',
+          'para ${tx.to?.address}: ${formatEth(tx.value)}',
         ];
       case final SolSignedTransaction doc:
         final bytes = base64Decode(doc.txBase64);
@@ -98,13 +102,35 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
         );
         return [
           'Solana · ${shorten(doc.signature)}',
-          '→ ${review.to}: ${formatSol(review.lamports)}',
+          'para ${review.to}: ${formatSol(review.lamports)}',
+        ];
+      case final XmrSignedTransaction doc:
+        return [
+          'Monero · ${shorten(doc.txHash)}',
+          '${doc.keyImages.length} key image(s) serão importadas.',
+        ];
+      case final XmrKeyImages doc:
+        return [
+          'Key images do Monero: ${doc.keyImages.length}',
+          'Nada é transmitido; só atualiza o saldo.',
         ];
       default:
         throw const FormatException(
           'Este arquivo é um pedido de assinatura, não uma transação '
           'assinada. Assine-o primeiro no assinador frio.',
         );
+    }
+  }
+
+  /// Usa o mesmo cache da aba Monero (transmite e importa key images).
+  Future<String> _withXmr(Future<String> Function(XmrWatcher) action) async {
+    final watcher = await openXmrWatcher(widget.services);
+    try {
+      final created = widget.services.wallet.createdAt ?? DateTime.now();
+      await watcher.open(created);
+      return await action(watcher);
+    } finally {
+      watcher.close();
     }
   }
 
@@ -135,6 +161,17 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
           await services.sol.broadcast(doc.txBase64),
           endpoints.solExplorerTx,
         ),
+        final XmrSignedTransaction doc => (
+          await _withXmr((w) => w.broadcast(doc)),
+          endpoints.xmrExplorerTx,
+        ),
+        final XmrKeyImages doc => (
+          await _withXmr((w) async {
+            await w.importKeyImages(doc.keyImages);
+            return 'key images importadas';
+          }),
+          '',
+        ),
         _ => throw StateError('tipo inesperado'),
       };
       final suffix = switch (_document) {
@@ -145,7 +182,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
       };
       setState(() {
         _resultId = id;
-        _resultUrl = '$url$id$suffix';
+        _resultUrl = url.isEmpty ? null : '$url$id$suffix';
       });
     } on Exception catch (e) {
       setState(() => _error = '$e');
@@ -157,21 +194,23 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final p = AppPalette.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('Transmitir transação assinada')),
       body: PageFrame(
         children: [
           if (_resultId != null) ...[
-            Icon(Icons.check_circle, size: 48, color: Colors.green.shade400),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
+            IconBadge(Icons.check_rounded, color: p.success, size: 64),
+            const SizedBox(height: 18),
             Text(
               'Transmitida! Acompanhe a confirmação no explorador:',
-              style: theme.textTheme.titleMedium,
+              style: theme.textTheme.titleLarge,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 14),
             CopyableText(_resultId!, label: 'Identificador'),
-            CopyableText(_resultUrl!, label: 'Link'),
-            const SizedBox(height: 16),
+            if (_resultUrl != null) CopyableText(_resultUrl!, label: 'Link'),
+            const SizedBox(height: 20),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('Voltar à carteira'),
@@ -179,38 +218,50 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
           ] else ...[
             Text(
               'Abra o arquivo que o assinador frio salvou '
-              '(btc-, dash-, eth- ou sol-assinada.json).',
+              '(btc-, dash-, eth-, sol- ou xmr-assinada.json, ou as key images do '
+              'Monero).',
+              style: theme.textTheme.bodyMedium?.copyWith(color: p.muted),
             ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.file_open),
-              label: const Text('Abrir transação assinada'),
-              onPressed: _busy ? null : _open,
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-            ],
-            if (_document != null) ...[
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final line in _summary)
-                        SelectableText(
-                          line,
-                          style: const TextStyle(fontFamily: 'monospace'),
-                        ),
-                    ],
+            const SizedBox(height: 16),
+            AppCard(
+              onTap: _busy ? null : _open,
+              glow: p.accent,
+              padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 20),
+              child: Column(
+                children: [
+                  Icon(Icons.file_open_outlined, size: 32, color: p.accent),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Abrir transação assinada',
+                    style: theme.textTheme.titleMedium,
                   ),
+                ],
+              ),
+            ),
+            if (_error != null) Notice(kind: NoticeKind.danger, text: _error),
+            if (_document != null) ...[
+              const SectionTitle('Conteúdo'),
+              AppCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final line in _summary)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: SelectableText(
+                          line,
+                          style: AppTheme.mono(
+                            fontSize: 13.5,
+                            height: 1.5,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 12),
               FilledButton.icon(
-                icon: const Icon(Icons.send),
+                icon: const Icon(Icons.cell_tower_rounded),
                 label: Text(_busy ? 'Transmitindo…' : 'Transmitir agora'),
                 onPressed: _busy ? null : _broadcast,
               ),

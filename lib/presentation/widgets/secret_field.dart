@@ -42,7 +42,6 @@ class _SecretFieldState extends State<SecretField> {
       smartQuotesType: SmartQuotesType.disabled,
       decoration: InputDecoration(
         labelText: widget.label,
-        border: const OutlineInputBorder(),
         suffixIcon: IconButton(
           tooltip: _visible ? 'Ocultar' : 'Mostrar',
           icon: Icon(_visible ? Icons.visibility_off : Icons.visibility),

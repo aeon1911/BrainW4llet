@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/security/security.dart';
 import 'home_screen.dart';
+import 'theme/app_theme.dart';
 
 class BrainW4lletApp extends StatefulWidget {
   const BrainW4lletApp({super.key});
@@ -27,12 +28,9 @@ class _BrainW4lletAppState extends State<BrainW4lletApp> {
       title: 'BrainW4llet',
       navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF2E7D6B),
-          brightness: Brightness.dark,
-        ),
-      ),
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: ThemeMode.system,
       builder: (context, child) => _PrivacyCover(child: child!),
       home: const HomeScreen(),
     );
@@ -57,9 +55,13 @@ class _PrivacyCover extends StatelessWidget {
             const Positioned.fill(
               key: Key('privacy-cover'),
               child: ColoredBox(
-                color: Color(0xFF0B1512),
+                color: Color(0xFF07090F),
                 child: Center(
-                  child: Icon(Icons.lock, size: 64, color: Colors.white38),
+                  child: Icon(
+                    Icons.lock_rounded,
+                    size: 56,
+                    color: Color(0xFF3A4458),
+                  ),
                 ),
               ),
             ),
