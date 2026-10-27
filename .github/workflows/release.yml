@@ -146,8 +146,10 @@ jobs:
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         run: |
           APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
-          ACTUAL="$("$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-release.apk \
-            | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr 'a-f' 'A-F' | sed 's/../&:/g;s/:$//')"
+          "$APKSIGNER" verify --verbose --print-certs \
+            build/app/outputs/flutter-apk/app-release.apk | tee "$RUNNER_TEMP/apksigner.txt"
+          ACTUAL="$(grep -m1 'certificate SHA-256 digest:' "$RUNNER_TEMP/apksigner.txt" \
+            | sed 's/.*digest: *//' | tr 'a-f' 'A-F' | sed 's/../&:/g;s/:$//')"
           echo "Certificado: $ACTUAL"
           test "$ACTUAL" = "$ANDROID_CERT_SHA256" || { echo "APK NÃO está assinado com a chave de release"; exit 1; }
       - name: Renomear
