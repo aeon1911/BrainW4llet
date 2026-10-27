@@ -24,6 +24,8 @@ dependencies:
   file_selector: 1.1.0
   monero_dart: 1.7.0
   path_provider: 2.1.6
+  # Gera o QR do endereço de recebimento (Dart puro, sem rede).
+  qr: 4.0.0
 
 dev_dependencies:
   flutter_test:
@@ -32,3 +34,21 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # Fontes embutidas (OFL): o assinador frio nunca baixa nada.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-400.ttf
+        - asset: assets/fonts/Inter-500.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-600.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-700.ttf
+          weight: 700
+        - asset: assets/fonts/Inter-800.ttf
+          weight: 800
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-400.ttf
+        - asset: assets/fonts/JetBrainsMono-600.ttf
+          weight: 600

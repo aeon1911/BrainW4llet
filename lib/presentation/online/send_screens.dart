@@ -8,9 +8,11 @@ import '../../features/evm/evm_send.dart';
 import '../../features/sol/sol_send.dart';
 import '../../features/transfer/transfer_document.dart';
 import '../../features/wallet/amounts.dart';
+import '../theme/app_theme.dart';
 import '../widgets/file_io.dart';
 import '../widgets/format.dart';
 import '../widgets/page_frame.dart';
+import '../widgets/ui.dart';
 import 'online_services.dart';
 
 /// Campos comuns: destino, valor e "enviar tudo".
@@ -40,20 +42,14 @@ class _SendFields extends StatelessWidget {
           enabled: enabled,
           autocorrect: false,
           enableSuggestions: false,
-          decoration: const InputDecoration(
-            labelText: 'Endereço de destino',
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(labelText: 'Endereço de destino'),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: amount,
           enabled: enabled && !sendAll,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(
-            labelText: 'Valor ($unit)',
-            border: const OutlineInputBorder(),
-          ),
+          decoration: InputDecoration(labelText: 'Valor ($unit)'),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
@@ -93,13 +89,60 @@ class _ErrorText extends StatelessWidget {
   @override
   Widget build(BuildContext context) => error == null
       ? const SizedBox.shrink()
-      : Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Text(
-            error!,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          ),
-        );
+      : Notice(kind: NoticeKind.danger, text: error);
+}
+
+/// Saldo disponível no topo das telas de envio.
+class AvailableCard extends StatelessWidget {
+  const AvailableCard(this.formatted, {super.key, this.label = 'Disponível'});
+
+  final String formatted;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => AppCard(
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(color: AppPalette.of(context).muted)),
+        const SizedBox(height: 4),
+        AmountText(formatted, fontSize: 24),
+      ],
+    ),
+  );
+}
+
+/// Resumo antes de criar o arquivo.
+class _PlanCard extends StatelessWidget {
+  const _PlanCard({required this.rows, this.total, this.note});
+
+  final List<(String, String)> rows;
+  final (String, String)? total;
+  final String? note;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    return AppCard(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final (label, value) in rows) KeyValueRow(label, value),
+          if (total != null) ...[
+            Divider(color: p.outline),
+            KeyValueRow(total!.$1, total!.$2, emphasis: true),
+          ],
+          if (note != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(note!, style: Theme.of(context).textTheme.bodySmall),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 // ------------------------------------------------------ Bitcoin e Dash --
@@ -216,11 +259,11 @@ class _UtxoSendScreenState extends State<UtxoSendScreen> {
       appBar: AppBar(title: Text('Enviar ${_coin.name}')),
       body: PageFrame(
         children: [
-          Text(
-            'Saldo confirmado disponível: '
-            '${_fmt(widget.state.confirmedBalance)}',
+          AvailableCard(
+            _fmt(widget.state.confirmedBalance),
+            label: 'Saldo confirmado disponível',
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           _SendFields(
             destination: _destination,
             amount: _amount,
@@ -232,8 +275,7 @@ class _UtxoSendScreenState extends State<UtxoSendScreen> {
             unit: _coin.ticker,
             enabled: !_busy,
           ),
-          Text('Taxa', style: Theme.of(context).textTheme.labelLarge),
-          const SizedBox(height: 4),
+          const SectionTitle('Taxa'),
           if (rates == null)
             const LinearProgressIndicator()
           else
@@ -265,10 +307,7 @@ class _UtxoSendScreenState extends State<UtxoSendScreen> {
             TextField(
               controller: _customFee,
               keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: _coin.feeUnit,
-                border: OutlineInputBorder(),
-              ),
+              decoration: InputDecoration(labelText: _coin.feeUnit),
             ),
           ],
           const SizedBox(height: 16),
@@ -279,31 +318,22 @@ class _UtxoSendScreenState extends State<UtxoSendScreen> {
               child: const Text('Revisar'),
             )
           else ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Enviar: ${_fmt(plan.amount)}'),
-                    Text(
-                      'Taxa: ${_fmt(plan.fee)} (${plan.feeRate} ${_coin.feeUnit})',
-                    ),
-                    if (plan.change > BigInt.zero)
-                      Text('Troco (volta para você): ${_fmt(plan.change)}'),
-                    Text('Moedas usadas: ${plan.inputs.length}'),
-                    const Divider(),
-                    Text(
-                      'Total que sai: ${_fmt(plan.amount + plan.fee)}',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ],
+            _PlanCard(
+              rows: [
+                ('Enviar', _fmt(plan.amount)),
+                (
+                  'Taxa',
+                  '${_fmt(plan.fee)} (${plan.feeRate} ${_coin.feeUnit})',
                 ),
-              ),
+                if (plan.change > BigInt.zero)
+                  ('Troco (volta para você)', _fmt(plan.change)),
+                ('Moedas usadas', '${plan.inputs.length}'),
+              ],
+              total: ('Total que sai', _fmt(plan.amount + plan.fee)),
             ),
             const SizedBox(height: 8),
             FilledButton.icon(
-              icon: const Icon(Icons.save_alt),
+              icon: const Icon(Icons.save_alt_rounded),
               label: const Text('Criar arquivo para assinar'),
               onPressed: _busy ? null : _create,
             ),
@@ -380,8 +410,8 @@ class _EvmSendScreenState extends State<EvmSendScreen> {
       appBar: AppBar(title: const Text('Enviar Ethereum')),
       body: PageFrame(
         children: [
-          Text('Saldo: ${formatEth(widget.balance)}'),
-          const SizedBox(height: 12),
+          AvailableCard(formatEth(widget.balance), label: 'Saldo'),
+          const SizedBox(height: 8),
           _SendFields(
             destination: _destination,
             amount: _amount,
@@ -402,26 +432,17 @@ class _EvmSendScreenState extends State<EvmSendScreen> {
                   : const Text('Revisar'),
             )
           else ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Para: ${review.to}'),
-                    Text('Enviar: ${formatEth(review.value)}'),
-                    Text('Taxa máxima: ${formatEth(review.maxFee)}'),
-                    Text(
-                      'A taxa cobrada costuma ser bem menor que a máxima.',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
+            _PlanCard(
+              rows: [
+                ('Para', review.to),
+                ('Enviar', formatEth(review.value)),
+                ('Taxa máxima', formatEth(review.maxFee)),
+              ],
+              note: 'A taxa cobrada costuma ser bem menor que a máxima.',
             ),
             const SizedBox(height: 8),
             FilledButton.icon(
-              icon: const Icon(Icons.save_alt),
+              icon: const Icon(Icons.save_alt_rounded),
               label: const Text('Criar arquivo para assinar'),
               onPressed: () => _saveRequest(context, _request!),
             ),
@@ -491,8 +512,8 @@ class _SolSendScreenState extends State<SolSendScreen> {
       appBar: AppBar(title: const Text('Enviar Solana')),
       body: PageFrame(
         children: [
-          Text('Saldo: ${formatSol(widget.balance)}'),
-          const SizedBox(height: 12),
+          AvailableCard(formatSol(widget.balance), label: 'Saldo'),
+          const SizedBox(height: 8),
           _SendFields(
             destination: _destination,
             amount: _amount,
@@ -501,16 +522,16 @@ class _SolSendScreenState extends State<SolSendScreen> {
             unit: 'SOL',
             enabled: !_busy,
           ),
-          Text(
-            'Taxa: ${formatSol(SolSend.baseFee)}. Atenção: o pedido expira em '
-            'cerca de 1 minuto. Deixe o assinador frio já aberto antes de '
-            'criar o arquivo.',
-            style: TextStyle(color: Theme.of(context).colorScheme.tertiary),
+          Notice(
+            kind: NoticeKind.warning,
+            text:
+                'Taxa: ${formatSol(SolSend.baseFee)}. Atenção: o pedido expira '
+                'em cerca de 1 minuto. Deixe o assinador frio já aberto antes '
+                'de criar o arquivo.',
           ),
-          const SizedBox(height: 12),
           _ErrorText(_error),
           FilledButton.icon(
-            icon: const Icon(Icons.save_alt),
+            icon: const Icon(Icons.save_alt_rounded),
             label: const Text('Criar arquivo para assinar'),
             onPressed: _busy ? null : _create,
           ),

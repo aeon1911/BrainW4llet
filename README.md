@@ -13,6 +13,12 @@ palavras com as "Chaves de Vida" (respostas pessoais → Argon2id → passphrase
 | Dash | ✅ | ✅ | ✅ PSBT (só rede principal) |
 | Monero | ✅ varredura com view key | ✅ | ✅ air-gapped (falta 1º envio real na stagenet) |
 
+## Interface
+
+Tema escuro e claro (segue o sistema), com acento verde-menta na carteira online e
+azul-gelo no assinador frio. Fontes Inter e JetBrains Mono (licença OFL) embutidas em
+`assets/fonts/`: o app nunca baixa nada para desenhar a tela.
+
 ## Documentos
 
 - **Auditoria de segurança:** [docs/AUDITORIA.md](docs/AUDITORIA.md)

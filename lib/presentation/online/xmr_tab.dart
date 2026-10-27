@@ -5,7 +5,12 @@ import '../../features/transfer/transfer_document.dart';
 import '../../features/wallet/amounts.dart';
 import '../../features/wallet/watch_only.dart';
 import '../../features/xmr/xmr_wallet.dart';
+import '../theme/app_theme.dart';
+import '../theme/coins.dart';
 import '../widgets/copy_text.dart';
+import '../widgets/ui.dart';
+import 'chain_tab.dart';
+import 'send_screens.dart';
 import '../widgets/file_io.dart';
 import '../widgets/page_frame.dart';
 import 'online_services.dart';
@@ -103,7 +108,7 @@ class _XmrTabState extends State<XmrTab> with AutomaticKeepAliveClientMixin {
       request.encode(),
     );
     if (path != null) {
-      _snack('Pedido salvo. Abra no assinador frio → "Assinar transação".');
+      _snack('Pedido salvo. Abra no assinador frio e use "Assinar transação".');
     }
   }
 
@@ -139,186 +144,164 @@ class _XmrTabState extends State<XmrTab> with AutomaticKeepAliveClientMixin {
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final theme = Theme.of(context);
+    final p = AppPalette.of(context);
     final watcher = _watcher;
     final cache = watcher?.cache;
     final balance = cache == null ? null : watcher!.balance();
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 640),
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            if (_syncing)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _target == null
-                            ? 'Conectando ao nó…'
-                            : 'Varrendo blocos com a view key: '
-                                  '${_current ?? '…'} de $_target',
-                      ),
-                      const SizedBox(height: 8),
-                      LinearProgressIndicator(
-                        value: _target == null || _current == null
-                            ? null
-                            : _progress(cache, _current!, _target!),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'A primeira vez pode levar vários minutos (cerca de 3 '
-                        'min por dia de histórico). O progresso fica salvo.',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            if (_error != null)
-              Card(
-                child: ListTile(
-                  title: Text(
-                    _error!,
-                    style: TextStyle(color: theme.colorScheme.error),
-                  ),
-                  trailing: TextButton(
-                    onPressed: _syncing ? null : _start,
-                    child: const Text('Tentar de novo'),
-                  ),
-                ),
-              ),
-            if (balance != null) ...[
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text('Saldo', style: theme.textTheme.labelLarge),
-                          const Spacer(),
-                          IconButton(
-                            tooltip: 'Atualizar',
-                            icon: const Icon(Icons.refresh),
-                            onPressed: _syncing ? null : _start,
-                          ),
-                        ],
-                      ),
-                      SelectableText(
-                        formatXmr(balance.unlocked),
-                        style: theme.textTheme.headlineSmall,
-                      ),
-                      if (balance.locked > BigInt.zero)
-                        Text(
-                          'Bloqueado (aguardando 10 confirmações): '
-                          '${formatXmr(balance.locked)}',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      if (balance.unknownSpentState > 0)
-                        Text(
-                          '${balance.unknownSpentState} moeda(s) sem key image: '
-                          'se você gastou Monero fora deste app, sincronize as '
-                          'key images para o saldo ficar exato.',
-                          style: TextStyle(color: theme.colorScheme.tertiary),
-                        ),
-                      Text(
-                        'Varrido até o bloco ${cache!.scannedHeight} '
-                        '(início: ${cache.restoreHeight}).',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          FilledButton.icon(
-                            icon: const Icon(Icons.north_east),
-                            label: const Text('Enviar'),
-                            onPressed: _syncing
-                                ? null
-                                : () => Navigator.of(context).push(
-                                    MaterialPageRoute<void>(
-                                      builder: (_) =>
-                                          XmrSendScreen(watcher: watcher!),
-                                    ),
-                                  ),
-                          ),
-                          OutlinedButton(
-                            onPressed: _syncing ? null : _exportKeyImageRequest,
-                            child: const Text('Pedir key images'),
-                          ),
-                          OutlinedButton(
-                            onPressed: _syncing ? null : _importKeyImages,
-                            child: const Text('Importar key images'),
-                          ),
-                          TextButton(
-                            onPressed: _syncing ? null : _pickRescanDate,
-                            child: const Text('Varrer desde outra data'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Receber', style: theme.textTheme.labelLarge),
-                      CopyableText(_wallet.xmrAddress!, label: 'Endereço'),
-                      Text(
-                        'Confira-o no assinador frio antes de receber valores '
-                        'altos. Pagamentos levam 10 confirmações (~20 min) '
-                        'para poderem ser gastos.',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text('Moedas recebidas', style: theme.textTheme.titleMedium),
-              if (cache.outputs.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Text('Nenhuma ainda.'),
-                ),
-              for (final o in cache.outputs.reversed)
-                Card(
-                  child: ExpansionTile(
-                    leading: Icon(
-                      o.spent ? Icons.north_east : Icons.south_west,
-                      color: o.spent ? null : Colors.green.shade400,
+    final status = <Widget>[
+      if (_syncing)
+        AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.radar_rounded, size: 18, color: p.accent),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _target == null
+                          ? 'Conectando ao nó…'
+                          : 'Varrendo blocos com a view key: '
+                                '${_current ?? '…'} de $_target',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                    title: Text(
-                      '${o.spent ? 'gasta · ' : ''}${formatXmr(o.amount)}',
-                      style: const TextStyle(fontFamily: 'monospace'),
-                    ),
-                    subtitle: Text('bloco ${o.height}'),
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                        child: CopyableText(
-                          '${widget.services.endpoints.xmrExplorerTx}${o.txHash}',
-                          label: 'Link do explorador',
-                        ),
-                      ),
-                    ],
                   ),
-                ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              LinearProgressIndicator(
+                value: _target == null || _current == null
+                    ? null
+                    : _progress(cache, _current!, _target!),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'A primeira vez pode levar vários minutos (cerca de 3 '
+                'min por dia de histórico). O progresso fica salvo.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ],
+          ),
+        ),
+      if (_error != null)
+        Notice(
+          kind: NoticeKind.danger,
+          text: _error,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: _syncing ? null : _start,
+                child: const Text('Tentar de novo'),
+              ),
+            ),
           ],
         ),
-      ),
+    ];
+    if (balance == null) {
+      return TwoPane(left: status, right: const []);
+    }
+    final hero = BalanceHero(
+      coin: CoinStyle.xmr,
+      balance: formatXmr(balance.unlocked),
+      label: 'Saldo desbloqueado',
+      onRefresh: _syncing ? null : _start,
+      pills: [
+        if (balance.locked > BigInt.zero)
+          Pill(
+            'Bloqueado: ${formatXmr(balance.locked)}',
+            icon: Icons.lock_clock_outlined,
+            color: p.warning,
+          ),
+        Pill(
+          'Bloco ${cache!.scannedHeight}',
+          icon: Icons.layers_outlined,
+          color: p.muted,
+        ),
+      ],
+      footer: [
+        if (balance.unknownSpentState > 0) ...[
+          const SizedBox(height: 14),
+          Notice(
+            kind: NoticeKind.warning,
+            text:
+                '${balance.unknownSpentState} moeda(s) sem key image: '
+                'se você gastou Monero fora deste app, sincronize as '
+                'key images para o saldo ficar exato.',
+          ),
+        ],
+      ],
+      actions: [
+        FilledButton.icon(
+          icon: const Icon(Icons.north_east_rounded),
+          label: const Text('Enviar'),
+          onPressed: _syncing
+              ? null
+              : () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => XmrSendScreen(watcher: watcher!),
+                  ),
+                ),
+        ),
+        PopupMenuButton<VoidCallback>(
+          tooltip: 'Mais ações',
+          enabled: !_syncing,
+          onSelected: (action) => action(),
+          itemBuilder: (_) => [
+            PopupMenuItem(
+              value: _exportKeyImageRequest,
+              child: const Text('Pedir key images'),
+            ),
+            PopupMenuItem(
+              value: _importKeyImages,
+              child: const Text('Importar key images'),
+            ),
+            PopupMenuItem(
+              value: _pickRescanDate,
+              child: const Text('Varrer desde outra data'),
+            ),
+          ],
+          child: Container(
+            height: 52,
+            width: 52,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: p.outline),
+            ),
+            child: Icon(Icons.more_horiz_rounded, color: p.muted),
+          ),
+        ),
+      ],
     );
+    final receive = ReceiveCard(
+      address: _wallet.xmrAddress!,
+      note:
+          'Confira-o no assinador frio antes de receber valores altos. '
+          'Pagamentos levam 10 confirmações (~20 min) para poderem ser '
+          'gastos.',
+    );
+    final outputs = HistoryCard(
+      title: 'Moedas recebidas',
+      empty: 'Nenhuma ainda.',
+      rows: [
+        for (final o in cache.outputs.reversed)
+          MovementTile(
+            title: o.spent ? 'Gasta' : 'Recebida',
+            subtitle: 'bloco ${o.height}',
+            amount: formatXmr(o.amount),
+            incoming: true,
+            muted: o.spent,
+            details: [
+              CopyableText(
+                '${widget.services.endpoints.xmrExplorerTx}${o.txHash}',
+                label: 'Link do explorador',
+              ),
+            ],
+          ),
+      ],
+    );
+    return TwoPane(left: [...status, hero, receive], right: [outputs]);
   }
 
   double _progress(XmrCache? cache, int current, int target) {
@@ -394,27 +377,21 @@ class _XmrSendScreenState extends State<XmrSendScreen> {
       appBar: AppBar(title: const Text('Enviar Monero')),
       body: PageFrame(
         children: [
-          Text('Disponível: ${formatXmr(balance.unlocked)}'),
-          const SizedBox(height: 12),
+          AvailableCard(formatXmr(balance.unlocked)),
+          const SizedBox(height: 8),
           TextField(
             controller: _destination,
             enabled: !_busy,
             autocorrect: false,
             enableSuggestions: false,
-            decoration: const InputDecoration(
-              labelText: 'Endereço de destino',
-              border: OutlineInputBorder(),
-            ),
+            decoration: const InputDecoration(labelText: 'Endereço de destino'),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _amount,
             enabled: !_busy && !_sendAll,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Valor (XMR)',
-              border: OutlineInputBorder(),
-            ),
+            decoration: const InputDecoration(labelText: 'Valor (XMR)'),
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
@@ -422,20 +399,13 @@ class _XmrSendScreenState extends State<XmrSendScreen> {
             value: _sendAll,
             onChanged: _busy ? null : (v) => setState(() => _sendAll = v),
           ),
-          Text(
-            'A taxa exata é calculada pelo assinador frio e aparece na revisão '
-            'antes de assinar.',
-            style: Theme.of(context).textTheme.bodySmall,
+          const Notice(
+            kind: NoticeKind.info,
+            text:
+                'A taxa exata é calculada pelo assinador frio e aparece na '
+                'revisão antes de assinar.',
           ),
-          const SizedBox(height: 12),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(
-                _error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            ),
+          if (_error != null) Notice(kind: NoticeKind.danger, text: _error),
           FilledButton.icon(
             icon: const Icon(Icons.save_alt),
             label: Text(

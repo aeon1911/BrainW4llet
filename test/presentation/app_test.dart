@@ -29,6 +29,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(const BrainW4lletApp());
+    await tester.scrollUntilVisible(find.text('Gerar nova seed'), 200);
     await tester.tap(find.text('Gerar nova seed'));
     await tester.pumpAndSettle();
     expect(find.textContaining('24.'), findsOneWidget);
