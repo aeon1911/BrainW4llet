@@ -21,6 +21,7 @@ azul-gelo no assinador frio. Fontes Inter e JetBrains Mono (licença OFL) embuti
 
 ## Documentos
 
+- **Retomar o projeto numa máquina nova:** [docs/RETOMAR.md](docs/RETOMAR.md)
 - **Auditoria de segurança:** [docs/AUDITORIA.md](docs/AUDITORIA.md)
 - Avaliação de segurança e decisões de arquitetura: [docs/AVALIACAO_SEGURANCA.md](docs/AVALIACAO_SEGURANCA.md)
 - Especificação criptográfica congelada: [lib/core/security/README.md](lib/core/security/README.md)
