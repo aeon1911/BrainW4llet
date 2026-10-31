@@ -10,12 +10,22 @@ const _jsonGroup = XTypeGroup(
 );
 
 /// Ponte com o `MainActivity.kt`: o file_selector não tem "salvar arquivo" no
-/// Android, então lá o diálogo "Salvar como" do sistema é aberto pelo código
-/// nativo.
+/// Android, e o "abrir" dele derruba o app se o provedor de arquivos do sistema
+/// falhar. Lá, os seletores do sistema são abertos pelo código nativo.
 const _androidFiles = MethodChannel('com.brainw4llet.brainw4llet/files');
 
-/// Abre um arquivo de texto escolhido pelo usuário (null = cancelou).
+/// Abre um arquivo de texto escolhido pelo usuário (null = cancelou). Se o
+/// sistema não conseguir ler o arquivo, lança [FormatException] com o motivo.
 Future<String?> pickTextFile() async {
+  if (Platform.isAndroid) {
+    try {
+      return await _androidFiles.invokeMethod<String>('openText');
+    } on PlatformException catch (e) {
+      throw FormatException(
+        'Não foi possível ler o arquivo: ${e.message ?? e.code}',
+      );
+    }
+  }
   final file = await openFile(acceptedTypeGroups: const [_jsonGroup]);
   return file?.readAsString();
 }

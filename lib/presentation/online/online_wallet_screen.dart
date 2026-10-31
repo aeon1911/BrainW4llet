@@ -39,9 +39,9 @@ class _OnlineWalletScreenState extends State<OnlineWalletScreen> {
   }
 
   Future<void> _open() async {
-    final text = await pickTextFile();
-    if (text == null) return;
     try {
+      final text = await pickTextFile();
+      if (text == null) return;
       final json = jsonDecode(text);
       if (json is! Map<String, Object?>) {
         throw const FormatException('Arquivo inválido.');

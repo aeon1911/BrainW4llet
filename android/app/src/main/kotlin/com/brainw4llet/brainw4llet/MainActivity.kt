@@ -2,53 +2,93 @@ package com.brainw4llet.brainw4llet
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
 
 class MainActivity : FlutterActivity() {
-    // O file_selector não tem "salvar arquivo" no Android. Aqui o sistema abre o
-    // "Salvar como" (ACTION_CREATE_DOCUMENT) e o app grava só no documento que o
-    // usuário escolher: nenhuma permissão de armazenamento é necessária.
+    // O file_selector não tem "salvar arquivo" no Android, e o "abrir" dele derruba
+    // o app quando o provedor de arquivos do sistema falha (visto no Waydroid:
+    // NullPointerException vindo do MediaProvider). Aqui o sistema abre o seletor
+    // (ACTION_CREATE_DOCUMENT / ACTION_OPEN_DOCUMENT), o app lê ou grava só o
+    // documento escolhido e qualquer falha volta ao Dart como erro. Nenhuma
+    // permissão de armazenamento é necessária.
     private var pendingResult: MethodChannel.Result? = null
     private var pendingContent: ByteArray? = null
 
-    @Suppress("DEPRECATION")
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
-                if (call.method != "saveText") {
-                    result.notImplemented()
-                    return@setMethodCallHandler
+                when (call.method) {
+                    "saveText" -> startSave(call, result)
+                    "openText" -> startOpen(result)
+                    else -> result.notImplemented()
                 }
-                val name = call.argument<String>("name")
-                val content = call.argument<String>("content")
-                if (name == null || content == null) {
-                    result.error("bad_args", "Nome ou conteúdo ausente.", null)
-                    return@setMethodCallHandler
-                }
-                if (pendingResult != null) {
-                    result.error("busy", "Já existe um \"Salvar como\" aberto.", null)
-                    return@setMethodCallHandler
-                }
-                pendingResult = result
-                pendingContent = content.toByteArray(Charsets.UTF_8)
-                val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE)
-                    type = "application/json"
-                    putExtra(Intent.EXTRA_TITLE, name)
-                }
-                startActivityForResult(intent, REQUEST_SAVE)
             }
+    }
+
+    private fun startSave(call: MethodCall, result: MethodChannel.Result) {
+        val name = call.argument<String>("name")
+        val content = call.argument<String>("content")
+        if (name == null || content == null) {
+            result.error("bad_args", "Nome ou conteúdo ausente.", null)
+            return
+        }
+        if (!claim(result)) return
+        pendingContent = content.toByteArray(Charsets.UTF_8)
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+            putExtra(Intent.EXTRA_TITLE, name)
+        }
+        launch(intent, REQUEST_SAVE)
+    }
+
+    private fun startOpen(result: MethodChannel.Result) {
+        if (!claim(result)) return
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+        }
+        launch(intent, REQUEST_OPEN)
+    }
+
+    /** Só um seletor aberto por vez. */
+    private fun claim(result: MethodChannel.Result): Boolean {
+        if (pendingResult != null) {
+            result.error("busy", "Já existe um seletor de arquivos aberto.", null)
+            return false
+        }
+        pendingResult = result
+        return true
+    }
+
+    @Suppress("DEPRECATION")
+    private fun launch(intent: Intent, requestCode: Int) {
+        try {
+            startActivityForResult(intent, requestCode)
+        } catch (e: Exception) {
+            val result = pendingResult
+            pendingResult = null
+            pendingContent = null
+            result?.error("no_picker", "Este aparelho não tem seletor de arquivos.", null)
+        }
     }
 
     @Suppress("DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode != REQUEST_SAVE) {
-            super.onActivityResult(requestCode, resultCode, data)
-            return
+        when (requestCode) {
+            REQUEST_SAVE -> finishSave(resultCode, data)
+            REQUEST_OPEN -> finishOpen(resultCode, data)
+            else -> super.onActivityResult(requestCode, resultCode, data)
         }
+    }
+
+    private fun finishSave(resultCode: Int, data: Intent?) {
         val result = pendingResult
         val content = pendingContent
         pendingResult = null
@@ -65,12 +105,58 @@ class MainActivity : FlutterActivity() {
             stream.use { it.write(content) }
             result.success(uri.toString())
         } catch (e: Exception) {
-            result.error("write_failed", e.message, null)
+            result.error("write_failed", describe(e), null)
         }
+    }
+
+    private fun finishOpen(resultCode: Int, data: Intent?) {
+        val result = pendingResult
+        pendingResult = null
+        if (result == null) return
+        val uri = data?.data
+        if (resultCode != Activity.RESULT_OK || uri == null) {
+            result.success(null) // cancelou
+            return
+        }
+        // Fora da thread principal, e com qualquer falha do provedor do sistema
+        // devolvida como erro: antes, o plugin deixava a exceção derrubar o app.
+        Thread {
+            try {
+                val text = String(readLimited(uri), Charsets.UTF_8)
+                runOnUiThread { result.success(text) }
+            } catch (e: Exception) {
+                runOnUiThread { result.error("read_failed", describe(e), null) }
+            }
+        }.start()
+    }
+
+    private fun readLimited(uri: Uri): ByteArray {
+        val stream = contentResolver.openInputStream(uri)
+            ?: throw IllegalStateException("O Android não abriu o arquivo.")
+        return stream.use { input ->
+            val out = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                if (out.size() + n > MAX_BYTES) {
+                    throw IllegalStateException("Arquivo grande demais para ser do BrainW4llet.")
+                }
+                out.write(buffer, 0, n)
+            }
+            out.toByteArray()
+        }
+    }
+
+    private fun describe(e: Exception): String {
+        val name = e.javaClass.simpleName
+        return if (e.message.isNullOrBlank()) name else "$name: ${e.message}"
     }
 
     private companion object {
         const val CHANNEL = "com.brainw4llet.brainw4llet/files"
         const val REQUEST_SAVE = 7741
+        const val REQUEST_OPEN = 7742
+        const val MAX_BYTES = 8 * 1024 * 1024
     }
 }
