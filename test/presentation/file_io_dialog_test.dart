@@ -4,11 +4,12 @@ import 'package:brainw4llet/presentation/widgets/file_io.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Abre o diálogo da pasta do app e guarda o que ele devolver em [results].
+/// Abre o diálogo de leitura que falhou e guarda o que ele devolver em
+/// [results].
 Future<void> _open(
   WidgetTester tester,
   List<File> files,
-  List<File?> results,
+  List<Object?> results,
 ) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -18,9 +19,9 @@ Future<void> _open(
             child: FilledButton(
               onPressed: () async {
                 results.add(
-                  await showDialog<File>(
+                  await showDialog<Object>(
                     context: context,
-                    builder: (_) => AppFolderDialog(
+                    builder: (_) => ReadFailedDialog(
                       dir: '/sdcard/Android/data/app/files',
                       reason: 'NullPointerException',
                       files: files,
@@ -40,10 +41,10 @@ Future<void> _open(
 }
 
 void main() {
-  testWidgets('lista os arquivos da pasta do app e devolve o escolhido', (
+  testWidgets('mostra o motivo e devolve o arquivo da pasta do app escolhido', (
     tester,
   ) async {
-    final results = <File?>[];
+    final results = <Object?>[];
     await _open(tester, [
       File('/x/carteira.json'),
       File('/x/pedido.json'),
@@ -56,19 +57,34 @@ void main() {
     await tester.tap(find.text('pedido.json'));
     await tester.pumpAndSettle();
 
-    expect(results.single?.path, '/x/pedido.json');
+    expect(results.single, isA<File>());
+    expect((results.single! as File).path, '/x/pedido.json');
   });
 
-  testWidgets('avisa quando a pasta está vazia e permite cancelar', (
+  testWidgets('sem arquivos na pasta do app, não fala da pasta', (
     tester,
   ) async {
-    final results = <File?>[];
+    final results = <Object?>[];
     await _open(tester, const [], results);
 
-    expect(
-      find.text('Nenhum arquivo .json nesta pasta ainda.'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('Modo compatível:'), findsOneWidget);
+    expect(find.textContaining('pasta do app'), findsNothing);
+    expect(find.text('/sdcard/Android/data/app/files'), findsNothing);
+  });
+
+  testWidgets('o botão Modo compatível devolve true', (tester) async {
+    final results = <Object?>[];
+    await _open(tester, const [], results);
+
+    await tester.tap(find.text('Modo compatível'));
+    await tester.pumpAndSettle();
+
+    expect(results.single, true);
+  });
+
+  testWidgets('Cancelar não devolve nada', (tester) async {
+    final results = <Object?>[];
+    await _open(tester, const [], results);
 
     await tester.tap(find.text('Cancelar'));
     await tester.pumpAndSettle();
