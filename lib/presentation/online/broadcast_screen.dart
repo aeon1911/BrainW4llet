@@ -38,14 +38,14 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
   String? _resultUrl;
 
   Future<void> _open() async {
-    final text = await pickTextFile();
-    if (text == null) return;
-    setState(() {
-      _error = null;
-      _document = null;
-      _resultId = null;
-    });
     try {
+      final text = await pickTextFile(context);
+      if (text == null) return;
+      setState(() {
+        _error = null;
+        _document = null;
+        _resultId = null;
+      });
       final document = TransferDocument.decode(text);
       if (document.network != widget.services.wallet.network) {
         throw FormatException(

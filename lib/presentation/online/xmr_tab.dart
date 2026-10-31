@@ -113,9 +113,9 @@ class _XmrTabState extends State<XmrTab> with AutomaticKeepAliveClientMixin {
   }
 
   Future<void> _importKeyImages() async {
-    final text = await pickTextFile();
-    if (text == null) return;
     try {
+      final text = await pickTextFile(context);
+      if (text == null) return;
       final doc = TransferDocument.decode(text);
       if (doc is! XmrKeyImages || doc.network != _wallet.network) {
         throw const FormatException(

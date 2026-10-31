@@ -125,7 +125,10 @@ Verificações:
    o que foi digitado até a tela fechar.
 3. **Mesmo PC para online e assinador** funciona, mas deixa de ser carteira fria.
 4. **Servidores públicos** veem seus endereços e seu IP (privacidade, não roubo). Ainda não há
-   suporte a Tor nem a nó próprio pela interface.
+   suporte a Tor nem a nó próprio pela interface. No Bitcoin, se o mempool.space não puder ser
+   alcançado (ele não responde por IPv4 em algumas conexões, o que deixa o Waydroid sem Bitcoin),
+   o app passa sozinho para mempool.emzy.de e mempool.bullbitcoin.com, que passam a ver os
+   endereços consultados. Só falhas de conexão trocam de servidor; uma transação recusada não.
 5. **Solana:** o pedido expira em cerca de 1 minuto (blockhash recente). Ainda não há durable
    nonce.
 6. **Build:** o AppImage não é reprodutível nem assinado. Para fundos reais, compile você mesmo a
