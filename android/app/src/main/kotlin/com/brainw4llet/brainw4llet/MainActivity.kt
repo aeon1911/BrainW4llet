@@ -3,6 +3,7 @@ package com.brainw4llet.brainw4llet
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -53,9 +54,10 @@ class MainActivity : FlutterActivity() {
 
     private fun startOpen(call: MethodCall, result: MethodChannel.Result) {
         if (!claim(result)) return
-        // Modo compatível: só depois que a leitura normal falhou. Pede também a
-        // permissão de escrita no documento escolhido, para poder abri-lo em "rw".
-        pendingCompat = call.argument<Boolean>("compat") ?: false
+        // Modo compatível: depois que a leitura normal falhou, ou direto no
+        // Waydroid, onde ela sempre falha. Pede também a permissão de escrita no
+        // documento escolhido, para poder abri-lo em "rw".
+        pendingCompat = (call.argument<Boolean>("compat") ?: false) || isWaydroid()
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "*/*"
@@ -68,6 +70,11 @@ class MainActivity : FlutterActivity() {
         }
         launch(intent, REQUEST_OPEN)
     }
+
+    /** O Waydroid se anuncia como "waydroid" na marca, no modelo e no dispositivo. */
+    private fun isWaydroid(): Boolean =
+        listOf(Build.BRAND, Build.MANUFACTURER, Build.MODEL, Build.DEVICE, Build.PRODUCT)
+            .any { it.contains("waydroid", ignoreCase = true) }
 
     /** Só um seletor aberto por vez. */
     private fun claim(result: MethodChannel.Result): Boolean {

@@ -1,18 +1,14 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:io' show Platform;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 
 const _jsonGroup = XTypeGroup(
   label: 'BrainW4llet (JSON)',
   extensions: ['json'],
 );
-
-/// Tamanho máximo de um arquivo de transferência (o código nativo usa o mesmo).
-const _maxBytes = 8 * 1024 * 1024;
 
 /// Ponte com o `MainActivity.kt`: o file_selector não tem "salvar arquivo" no
 /// Android, e o "abrir" dele derruba o app se o provedor de arquivos do sistema
@@ -20,15 +16,16 @@ const _maxBytes = 8 * 1024 * 1024;
 const _androidFiles = MethodChannel('com.brainw4llet.brainw4llet/files');
 
 /// Vira `true` depois que o modo compatível leu um arquivo: nesse aparelho a
-/// leitura normal não funciona, então as próximas já começam por ele.
+/// leitura normal não funciona, então as próximas já começam por ele. (No
+/// Waydroid, o código nativo já começa pelo modo compatível.)
 bool _androidCompatRead = false;
 
 /// Abre um arquivo de texto escolhido pelo usuário (null = cancelou). Se o
 /// sistema não conseguir ler o arquivo, lança [FormatException] com o motivo.
 ///
-/// No Android, se o provedor de arquivos do sistema recusar a leitura (já
-/// acontece no Waydroid), um diálogo oferece o modo compatível (escolher o
-/// arquivo de novo, lido de outro jeito) ou abrir um arquivo da pasta do app.
+/// No Android, se o provedor de arquivos do sistema recusar a leitura, um
+/// diálogo oferece escolher o arquivo de novo, no modo compatível (lido de
+/// outro jeito).
 Future<String?> pickTextFile(BuildContext context) async {
   if (!Platform.isAndroid) {
     final file = await openFile(acceptedTypeGroups: const [_jsonGroup]);
@@ -44,101 +41,40 @@ Future<String?> pickTextFile(BuildContext context) async {
       throw FormatException('Não foi possível ler o arquivo: $reason');
     }
     if (!context.mounted) return null;
-    return _recoverFailedRead(context, reason);
-  }
-}
-
-Future<String?> _recoverFailedRead(BuildContext context, String reason) async {
-  final dir =
-      await getExternalStorageDirectory() ??
-      await getApplicationDocumentsDirectory();
-  final files = [
-    for (final entry in dir.listSync())
-      if (entry is File && entry.path.toLowerCase().endsWith('.json')) entry,
-  ]..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
-  if (!context.mounted) return null;
-  final choice = await showDialog<Object>(
-    context: context,
-    builder: (_) =>
-        ReadFailedDialog(dir: dir.path, reason: reason, files: files),
-  );
-  if (choice is File) {
-    if (await choice.length() > _maxBytes) {
-      throw const FormatException(
-        'Arquivo grande demais para ser do BrainW4llet.',
+    final retry = await showDialog<bool>(
+      context: context,
+      builder: (_) => ReadFailedDialog(reason: reason),
+    );
+    if (retry != true) return null;
+    try {
+      final text = await _androidFiles.invokeMethod<String>('openText', {
+        'compat': true,
+      });
+      if (text != null) _androidCompatRead = true;
+      return text;
+    } on PlatformException catch (retryError) {
+      throw FormatException(
+        'Não foi possível ler o arquivo: '
+        '${retryError.message ?? retryError.code}',
       );
     }
-    return choice.readAsString();
-  }
-  if (choice != true) return null;
-  try {
-    final text = await _androidFiles.invokeMethod<String>('openText', {
-      'compat': true,
-    });
-    if (text != null) _androidCompatRead = true;
-    return text;
-  } on PlatformException catch (e) {
-    throw FormatException(
-      'Não foi possível ler o arquivo: ${e.message ?? e.code}',
-    );
   }
 }
 
 /// Diálogo mostrado quando o Android recusa a leitura. Devolve `true` para
-/// tentar o modo compatível, um [File] da pasta do app, ou nada (cancelou).
-/// Público só para o teste.
+/// escolher o arquivo de novo, no modo compatível. Público só para o teste.
 class ReadFailedDialog extends StatelessWidget {
-  const ReadFailedDialog({
-    super.key,
-    required this.dir,
-    required this.reason,
-    required this.files,
-  });
+  const ReadFailedDialog({super.key, required this.reason});
 
-  final String dir;
   final String reason;
-  final List<File> files;
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Não deu para ler o arquivo'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'O Android recusou a leitura ($reason). Isso acontece em '
-              'alguns aparelhos e no Waydroid.',
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Modo compatível: escolha o arquivo de novo e o app tenta lê-lo '
-              'de outro jeito.',
-            ),
-            if (files.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              const Text('Ou abra um arquivo da pasta do app:'),
-              const SizedBox(height: 4),
-              SelectableText(
-                dir,
-                style: const TextStyle(
-                  fontFamily: 'JetBrainsMono',
-                  fontSize: 12,
-                ),
-              ),
-              for (final file in files)
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.description_outlined),
-                  title: Text(file.path.split('/').last),
-                  onTap: () => Navigator.of(context).pop(file),
-                ),
-            ],
-          ],
-        ),
+      content: Text(
+        'O Android recusou a leitura ($reason). Escolha o arquivo de novo: o '
+        'app vai tentar lê-lo de outro jeito.',
       ),
       actions: [
         TextButton(
@@ -147,7 +83,7 @@ class ReadFailedDialog extends StatelessWidget {
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Modo compatível'),
+          child: const Text('Escolher de novo'),
         ),
       ],
     );
