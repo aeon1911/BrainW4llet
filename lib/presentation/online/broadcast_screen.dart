@@ -39,7 +39,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
 
   Future<void> _open() async {
     try {
-      final text = await pickTextFile();
+      final text = await pickTextFile(context);
       if (text == null) return;
       setState(() {
         _error = null;

@@ -179,7 +179,7 @@ class _UnlockScreenState extends State<UnlockScreen> {
     final seed = _seed;
     if (seed == null) return;
     try {
-      final text = await pickTextFile();
+      final text = await pickTextFile(context);
       if (text == null || !mounted) return;
       final document = TransferDocument.decode(text);
       if (document.network != _network) {

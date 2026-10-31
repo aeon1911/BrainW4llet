@@ -40,7 +40,7 @@ class _OnlineWalletScreenState extends State<OnlineWalletScreen> {
 
   Future<void> _open() async {
     try {
-      final text = await pickTextFile();
+      final text = await pickTextFile(context);
       if (text == null) return;
       final json = jsonDecode(text);
       if (json is! Map<String, Object?>) {
