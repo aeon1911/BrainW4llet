@@ -242,10 +242,11 @@ class _OnlineWalletScreenState extends State<OnlineWalletScreen> {
             kind: NoticeKind.info,
             title: 'Servidores públicos',
             text:
-                'mempool.space (BTC), publicnode.com e Blockscout (ETH), RPC '
-                'oficial da Solana, Insight (Dash) e um nó Monero. Eles veem '
-                'os endereços consultados e o seu IP. A detecção das suas '
-                'moedas Monero acontece neste computador.',
+                'mempool.space (BTC; se ele não responder, mempool.emzy.de e '
+                'mempool.bullbitcoin.com), publicnode.com e Blockscout (ETH), '
+                'RPC oficial da Solana, Insight (Dash) e um nó Monero. Eles '
+                'veem os endereços consultados e o seu IP. A detecção das '
+                'suas moedas Monero acontece neste computador.',
           ),
         ],
       ),

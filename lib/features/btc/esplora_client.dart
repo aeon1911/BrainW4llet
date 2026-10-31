@@ -81,6 +81,58 @@ abstract interface class UtxoBackend {
   Future<String> broadcast(String txHex);
 }
 
+/// Vários servidores com a mesma API (mempool.space e espelhos). Usa o primeiro
+/// que responder e continua nele; só passa ao próximo quando o servidor não
+/// pode ser alcançado (conexão, tempo esgotado, erro 5xx). Resposta de erro do
+/// próprio servidor (ex.: transação recusada) não troca de servidor.
+///
+/// Serve para redes onde um deles fica inalcançável: o mempool.space, por
+/// exemplo, não responde por IPv4 em algumas conexões, e quem só tem IPv4
+/// (como o Waydroid) fica sem Bitcoin.
+final class FailoverEsplora implements UtxoBackend {
+  FailoverEsplora(this._clients) : assert(_clients.isNotEmpty);
+
+  final List<EsploraClient> _clients;
+  int _current = 0;
+
+  Future<T> _run<T>(Future<T> Function(EsploraClient client) call) async {
+    NetworkException? last;
+    for (var i = 0; i < _clients.length; i++) {
+      final index = (_current + i) % _clients.length;
+      try {
+        final result = await call(_clients[index]);
+        _current = index;
+        return result;
+      } on NetworkException catch (e) {
+        if (!e.retryable) rethrow;
+        last = e;
+      }
+    }
+    throw last!;
+  }
+
+  @override
+  Future<EsploraAddressStats> addressStats(String address) =>
+      _run((c) => c.addressStats(address));
+
+  @override
+  Future<List<EsploraUtxo>> utxos(String address) =>
+      _run((c) => c.utxos(address));
+
+  @override
+  Future<List<EsploraTx>> transactions(String address) =>
+      _run((c) => c.transactions(address));
+
+  @override
+  Future<String> rawTransaction(String txid) =>
+      _run((c) => c.rawTransaction(txid));
+
+  Future<BtcFeeRates> feeRates() => _run((c) => c.feeRates());
+
+  @override
+  Future<String> broadcast(String txHex) => _run((c) => c.broadcast(txHex));
+}
+
 /// Cliente da API Esplora (mempool.space / blockstream.info).
 final class EsploraClient implements UtxoBackend {
   EsploraClient(this.baseUrl, this._http);
