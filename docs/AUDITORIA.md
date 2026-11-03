@@ -125,7 +125,10 @@ Verificações:
    o que foi digitado até a tela fechar.
 3. **Mesmo PC para online e assinador** funciona, mas deixa de ser carteira fria.
 4. **Servidores públicos** veem seus endereços e seu IP (privacidade, não roubo). Ainda não há
-   suporte a Tor nem a nó próprio pela interface.
+   suporte a Tor nem a nó próprio pela interface. No Bitcoin, se o mempool.space não puder ser
+   alcançado (ele não responde por IPv4 em algumas conexões, o que deixa o Waydroid sem Bitcoin),
+   o app passa sozinho para mempool.emzy.de e mempool.bullbitcoin.com, que passam a ver os
+   endereços consultados. Só falhas de conexão trocam de servidor; uma transação recusada não.
 5. **Solana:** o pedido expira em cerca de 1 minuto (blockhash recente). Ainda não há durable
    nonce.
 6. **Build:** o AppImage não é reprodutível nem assinado. Para fundos reais, compile você mesmo a
@@ -194,7 +197,7 @@ No workflow (`.github/workflows/release.yml`):
 | A8 | Baixa | **`android:allowBackup` no padrão (`true`).** O app não grava nada sensível, mas desligar o backup é uma defesa barata. | `android:allowBackup="false"` no `AndroidManifest.xml`. |
 | A9 | Baixa | **O build local do Android usa a chave de debug em silêncio** quando falta a de release. O CI confere o certificado, mas um APK local pode sair com a chave errada sem aviso. | Falhar o `assembleRelease` quando não houver chave, salvo com uma flag explícita. |
 | A10 | Funcional | **macOS:** `Release.entitlements` só tem o sandbox. Faltam `com.apple.security.network.client` (carteira online) e `com.apple.security.files.user-selected.read-write` (salvar e abrir os arquivos de transferência). | Adicionar os dois quando o macOS entrar no release. |
-| A11 | Info | O PR #2 (`fix/android-salvar-arquivo`) agora precisa estar em dia com a `main` e passar em "Análise e testes" antes do merge, que será por squash ou rebase. | Atualizar a branch antes de mergear. |
+| A11 | Info | O PR #2 (`fix/android-salvar-arquivo`) já entrou na `main` (squash). Seu job `ios` também passou a usar actions fixadas por SHA e `persist-credentials: false`. | Resolvido. |
 
 Continuam valendo os riscos residuais da seção 4. Os mais importantes: o assinador ser o mesmo
 binário da carteira online, e não haver auditoria externa.

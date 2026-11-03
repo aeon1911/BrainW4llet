@@ -178,9 +178,9 @@ class _UnlockScreenState extends State<UnlockScreen> {
   Future<void> _signFromFile() async {
     final seed = _seed;
     if (seed == null) return;
-    final text = await pickTextFile();
-    if (text == null || !mounted) return;
     try {
+      final text = await pickTextFile(context);
+      if (text == null || !mounted) return;
       final document = TransferDocument.decode(text);
       if (document.network != _network) {
         throw FormatException(

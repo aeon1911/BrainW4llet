@@ -4,9 +4,14 @@ import 'dart:typed_data';
 
 /// Falha de rede ou resposta inesperada de um servidor.
 final class NetworkException implements Exception {
-  const NetworkException(this.message);
+  const NetworkException(this.message, {this.retryable = false});
 
   final String message;
+
+  /// `true` quando o servidor não pôde ser alcançado (conexão, tempo esgotado,
+  /// erro 5xx): vale tentar outro servidor. Resposta de erro do próprio
+  /// servidor (4xx) não é: outro daria a mesma.
+  final bool retryable;
 
   @override
   String toString() => message;
@@ -18,7 +23,11 @@ final class HttpJson {
   HttpJson({this.timeout = const Duration(seconds: 25)});
 
   final Duration timeout;
-  final HttpClient _client = HttpClient()..userAgent = 'BrainW4llet';
+  // Conexão curta: servidor inalcançável (ex.: só IPv4 e o servidor bloqueado
+  // nessa rota) tem de falhar logo para outro servidor poder assumir.
+  final HttpClient _client = HttpClient()
+    ..userAgent = 'BrainW4llet'
+    ..connectionTimeout = const Duration(seconds: 8);
   int _rpcId = 0;
 
   void close() => _client.close(force: true);
@@ -61,7 +70,10 @@ final class HttpJson {
         }
         return (response.statusCode, bytes.takeBytes());
       } on Exception catch (e) {
-        throw NetworkException('Falha ao acessar ${uri.host}: $e');
+        throw NetworkException(
+          'Falha ao acessar ${uri.host}: $e',
+          retryable: true,
+        );
       }
     }
   }
@@ -108,6 +120,7 @@ final class HttpJson {
         if (attempt >= maxRetries) {
           throw NetworkException(
             '${uri.host} está limitando as consultas. Tente de novo em instantes.',
+            retryable: true,
           );
         }
         final backoff = Duration(seconds: 1 << attempt);
@@ -153,6 +166,7 @@ final class HttpJson {
         final detail = text.length > 200 ? '${text.substring(0, 200)}…' : text;
         throw NetworkException(
           '${uri.host} respondeu ${response.statusCode}: $detail',
+          retryable: response.statusCode >= 500,
         );
       }
       return text;
@@ -161,7 +175,10 @@ final class HttpJson {
     } on _RateLimited {
       rethrow;
     } on Exception catch (e) {
-      throw NetworkException('Falha ao acessar ${uri.host}: $e');
+      throw NetworkException(
+        'Falha ao acessar ${uri.host}: $e',
+        retryable: true,
+      );
     }
   }
 }
