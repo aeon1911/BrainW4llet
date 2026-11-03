@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "BrainW4llet (somente leitura)",
+  "short_name": "BrainW4llet",
+  "version": "0.1.0",
+  "description": "Carteira online somente leitura do BrainW4llet: saldo, histórico e endereços de recebimento. Nunca recebe chaves que gastem.",
+  "homepage_url": "https://github.com/aeon1911/BrainW4llet",
+  "icons": {
+    "48": "icons/icon.svg",
+    "96": "icons/icon.svg"
+  },
+  "action": {
+    "default_title": "BrainW4llet",
+    "default_popup": "app.html#popup",
+    "default_icon": "icons/icon.svg"
+  },
+  "permissions": ["storage", "clipboardWrite"],
+  "host_permissions": [
+    "https://mempool.space/*",
+    "https://ethereum-rpc.publicnode.com/*",
+    "https://ethereum-sepolia-rpc.publicnode.com/*",
+    "https://eth.blockscout.com/*",
+    "https://eth-sepolia.blockscout.com/*",
+    "https://solana-rpc.publicnode.com/*",
+    "https://api.devnet.solana.com/*",
+    "https://insight.dash.org/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src https://mempool.space https://ethereum-rpc.publicnode.com https://ethereum-sepolia-rpc.publicnode.com https://eth.blockscout.com https://eth-sepolia.blockscout.com https://solana-rpc.publicnode.com https://api.devnet.solana.com https://insight.dash.org; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "brainw4llet@aeon1911.github.io",
+      "strict_min_version": "128.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  }
+}

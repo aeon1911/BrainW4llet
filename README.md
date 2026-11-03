@@ -19,6 +19,12 @@ Tema escuro e claro (segue o sistema), com acento verde-menta na carteira online
 azul-gelo no assinador frio. Fontes Inter e JetBrains Mono (licença OFL) embutidas em
 `assets/fonts/`: o app nunca baixa nada para desenhar a tela.
 
+## Extensão do Firefox
+
+A pasta [`firefox/`](firefox/README.md) tem a carteira online **somente leitura** como extensão
+do Firefox: saldo, histórico e endereço de recebimento (com QR). Ela importa o mesmo arquivo
+somente leitura do assinador e nunca recebe chaves que gastem.
+
 ## Documentos
 
 - **Retomar o projeto numa máquina nova:** [docs/RETOMAR.md](docs/RETOMAR.md)
