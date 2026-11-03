@@ -145,15 +145,15 @@ Com o `gh` instalado e autenticado, abrir PRs, editar a descrição e baixar art
 
 ## Publicar uma versão nova
 
-1. Suba `version:` no `pubspec.yaml` (ex.: `0.1.1+2`).
-2. Faça commit na `main`.
+1. Suba `version:` no `pubspec.yaml` (ex.: `0.1.1+2`) e o `version` de `firefox/manifest.json` (ex.: `0.1.1`).
+2. Abra um PR para a `main`. Push direto está bloqueado pelo ruleset, e o merge exige "Análise e testes" verde.
 3. Crie e envie a tag com o mesmo número:
 
    ```bash
    git tag -a v0.1.1 -m "BrainW4llet v0.1.1" && git push origin v0.1.1
    ```
 
-O workflow `.github/workflows/release.yml` roda os testes, compila as três plataformas, confere a assinatura do APK e publica o release com `SHA256SUMS`. Em pull requests, ele só compila. O job `ios` ainda não entra no release.
+O workflow `.github/workflows/release.yml` roda os testes, compila as três plataformas e a extensão do Firefox, confere a assinatura do APK e publica o release com `SHA256SUMS`. Em pull requests, ele só compila. O job `ios` ainda não entra no release.
 
 ## Histórico das conversas com o Claude Code
 

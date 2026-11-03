@@ -1,0 +1,17 @@
+# Avisa sobre atualizações das Actions (fixadas por SHA) e dos pacotes Dart.
+# Pacotes criptográficos têm versão exata no pubspec: leia as mudanças e rode
+# a suíte de testes antes de aceitar (docs/AUDITORIA.md §5).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+  - package-ecosystem: pub
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

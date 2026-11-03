@@ -148,3 +148,74 @@ Verificações:
 - Atualizar dependências só depois de reler as mudanças e rodar a suíte de testes. Os vetores
   independentes falham se a assinatura mudar.
 - Auditoria externa antes de valores significativos (ver a limitação no topo).
+
+---
+
+## Adendo 2026-11-03: repositório, processo de release e pontos a melhorar
+
+**Escopo:** configurações do repositório no GitHub, workflow de release e uma nova leitura do
+código em `lib/` e das plataformas. A mesma limitação do topo vale aqui: quem revisou é o mesmo
+assistente que escreveu o código.
+
+### O aviso do GitHub sobre a `main`
+
+A `main` já tinha um ruleset ("Proteger main"), criado em 2026-11-02. Ele bloqueava exclusão e
+force-push e exigia PR. Faltavam algumas coisas, que foram corrigidas direto no GitHub:
+
+| Item | Antes | Agora |
+|---|---|---|
+| Checagem obrigatória | nenhuma: um PR com testes falhando podia ser mergeado | **"Análise e testes"** (`flutter analyze` + `flutter test`) obrigatória e com a branch em dia com a `main` |
+| Histórico | merge commits permitidos | linear (só squash ou rebase) |
+| Conversas do PR | podiam ficar abertas | precisam estar resolvidas |
+| Tags `v*` | sem proteção: dava para mover uma tag publicada e gerar outro release com o mesmo nome | novo ruleset impede apagar, mover ou forçar tags `v*` |
+| Alertas do Dependabot | desligados | ligados, com PRs automáticos de correção de segurança |
+| Branches mergeadas | ficavam no repositório | apagadas automaticamente |
+
+O repositório continua sem exceções ao ruleset (`bypass_actors` vazio), nem para o dono.
+
+No workflow (`.github/workflows/release.yml`):
+
+- Toda Action foi fixada pelo SHA do commit, não pela tag. Uma tag pode ser movida por quem
+  controla o repositório da Action. O SHA, não.
+- `persist-credentials: false` no checkout. O token do GitHub não fica gravado no `.git` durante
+  o build.
+- Novo `.github/dependabot.yml`, que avisa de atualizações das Actions e dos pacotes Dart. Os
+  pacotes criptográficos continuam com versão exata: leia as mudanças antes de aceitar.
+- Novo job "Extensão Firefox", com testes, `web-ext lint` e o `.xpi` no release.
+
+### Pontos a melhorar no app
+
+| # | Gravidade | Achado | Recomendação |
+|---|---|---|---|
+| A1 | **Média** | **A impressão digital tem só 32 bits** (`WatchOnlyWallet.fingerprint`: 4 bytes do SHA-256). Ela é a defesa contra um arquivo somente leitura adulterado. Achar outra carteira com a mesma impressão custa cerca de 2³² tentativas: gerar uma chave ETH ou SOL do atacante e calcular um SHA-256. Com geradores de endereço "vanity" em GPU, isso leva de minutos a horas. | Mostrar 64 bits ou mais (ex.: `ABCD-EF01-2345-6789`) num formato v2. Enquanto isso, conferir no assinador o endereço completo antes de receber valores altos (já recomendado em H1). |
+| A2 | Média | **Android sem `FLAG_SECURE`.** O `SessionGuard` cobre a tela no seletor de apps, mas capturas de tela, gravação e espelhamento ainda capturam a seed de 24 palavras e as Chaves de Vida. Apps com acessibilidade ou captura de tela conseguem fazer isso sem você notar. | Ativar `WindowManager.LayoutParams.FLAG_SECURE` no `MainActivity` (ao menos enquanto o assinador estiver destravado). No iOS, cobrir a tela ao detectar `UIScreen.capturedDidChangeNotification`. |
+| A3 | Média | **`appimagetool` baixado sem conferir o hash** no CI. Se o arquivo do release for trocado, o AppImage publicado sai com o programa de outra pessoa. | Fixar o SHA-256 do `appimagetool-x86_64.AppImage` 1.9.0 e conferir com `sha256sum -c` antes de executar. |
+| A4 | Baixa | **`fromJson` do arquivo somente leitura só valida a chave BTC.** Endereço ETH/SOL, xpub Dash e endereço Monero malformados só falham depois, em outras telas. | Validar todos os campos na importação, como a extensão do Firefox já faz (`firefox/lib/watchonly.js`). |
+| A5 | Baixa | **Cliente HTTP sem limite de tamanho, e `Retry-After` sem teto** (`HttpJson`). Um servidor ruim pode mandar uma resposta enorme (memória) ou pedir para esperar horas a cada uma das 5 tentativas. Não leva a roubo, só trava a carteira online. | Limitar o corpo (ex.: 8 MiB) e o `Retry-After` (ex.: 30 s). A extensão já faz isso em `firefox/lib/net.js`. |
+| A6 | Baixa | **Histórico ETH: transação enviada que falhou** aparece como perda de valor + taxa (`EvmClient._entry`). Só a taxa foi cobrada. | Com `status == 'error'`, descontar só a taxa. |
+| A7 | Baixa | **A área de transferência não é limpa.** A view key do Monero, depois de copiada, fica lá. No Android 13+, o teclado e outros apps podem ler. | Marcar o conteúdo como sensível (`ClipDescription.EXTRA_IS_SENSITIVE`) e limpar depois de ~60 s. |
+| A8 | Baixa | **`android:allowBackup` no padrão (`true`).** O app não grava nada sensível, mas desligar o backup é uma defesa barata. | `android:allowBackup="false"` no `AndroidManifest.xml`. |
+| A9 | Baixa | **O build local do Android usa a chave de debug em silêncio** quando falta a de release. O CI confere o certificado, mas um APK local pode sair com a chave errada sem aviso. | Falhar o `assembleRelease` quando não houver chave, salvo com uma flag explícita. |
+| A10 | Funcional | **macOS:** `Release.entitlements` só tem o sandbox. Faltam `com.apple.security.network.client` (carteira online) e `com.apple.security.files.user-selected.read-write` (salvar e abrir os arquivos de transferência). | Adicionar os dois quando o macOS entrar no release. |
+| A11 | Info | O PR #2 (`fix/android-salvar-arquivo`) já entrou na `main` (squash). Seu job `ios` também passou a usar actions fixadas por SHA e `persist-credentials: false`. | Resolvido. |
+
+Continuam valendo os riscos residuais da seção 4. Os mais importantes: o assinador ser o mesmo
+binário da carteira online, e não haver auditoria externa.
+
+### Extensão do Firefox
+
+`firefox/` é uma versão **somente leitura** da carteira online: saldo, histórico e receber, para
+BTC, ETH, SOL e Dash, e o endereço do Monero. Decisões de segurança:
+
+- Ela nunca recebe chave privada nem monta transações. O envio continua no app, com o assinador
+  offline.
+- A view key do Monero é descartada na importação. Por isso a extensão não mostra o saldo do
+  Monero.
+- Por padrão, a carteira fica só na sessão do navegador.
+- CSP restrita (`default-src 'none'`). A rede só fala com os servidores listados, que são os
+  mesmos das `host_permissions`.
+- Não usa bibliotecas de terceiros. A criptografia pública (BIP-32, secp256k1, RIPEMD-160,
+  Bech32, Base58) foi conferida contra vetores do BIP-84/BIP-44 e contra uma implementação
+  independente em Python.
+
+Detalhes em [firefox/README.md](../firefox/README.md).
