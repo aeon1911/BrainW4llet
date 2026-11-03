@@ -6,6 +6,7 @@ import 'wallet_network.dart';
 final class Endpoints {
   const Endpoints({
     required this.btcEsplora,
+    this.btcEsploraFallbacks = const [],
     required this.btcExplorerTx,
     required this.evmRpc,
     required this.evmChainId,
@@ -23,6 +24,10 @@ final class Endpoints {
 
   /// API Esplora (mempool.space).
   final Uri btcEsplora;
+
+  /// Espelhos com a mesma API, usados na ordem se o principal não responder
+  /// (o mempool.space não é alcançável por IPv4 em algumas conexões).
+  final List<Uri> btcEsploraFallbacks;
   final String btcExplorerTx;
 
   /// JSON-RPC Ethereum.
@@ -51,6 +56,10 @@ final class Endpoints {
   static Endpoints defaults(WalletNetwork network) => switch (network) {
     WalletNetwork.mainnet => Endpoints(
       btcEsplora: Uri.parse('https://mempool.space/api'),
+      btcEsploraFallbacks: [
+        Uri.parse('https://mempool.emzy.de/api'),
+        Uri.parse('https://mempool.bullbitcoin.com/api'),
+      ],
       btcExplorerTx: 'https://mempool.space/tx/',
       evmRpc: Uri.parse('https://ethereum-rpc.publicnode.com'),
       evmChainId: 1,
@@ -67,6 +76,7 @@ final class Endpoints {
     ),
     WalletNetwork.testnet => Endpoints(
       btcEsplora: Uri.parse('https://mempool.space/testnet4/api'),
+      btcEsploraFallbacks: [Uri.parse('https://mempool.emzy.de/testnet4/api')],
       btcExplorerTx: 'https://mempool.space/testnet4/tx/',
       evmRpc: Uri.parse('https://ethereum-sepolia-rpc.publicnode.com'),
       evmChainId: 11155111,

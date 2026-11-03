@@ -1,5 +1,6 @@
 # Compila Linux (AppImage + tar.gz), Windows (zip) e Android (APK) e, numa
 # tag v*, publica tudo num GitHub Release com os SHA-256.
+# Também gera o IPA do iOS, sem assinatura, como artefato (job "ios").
 # Em pull requests só compila, para validar antes da tag.
 #
 # Para fundos reais, prefira compilar você mesmo a partir do código
@@ -161,6 +162,37 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: android
+          path: dist/*
+          if-no-files-found: error
+
+  ios:
+    name: iOS (IPA sem assinatura)
+    needs: test
+    runs-on: macos-15
+    # Ainda não é exigido pela publicação do release: se o build de iOS falhar,
+    # o resto não para. Veja o artefato "ios" da execução.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: IPA sem assinatura
+        # O app sai sem assinatura: o AltStore/SideStore assina com o seu Apple
+        # ID na instalação (tool/build_ipa.sh, docs/AVALIACAO_SEGURANCA.md §6–7).
+        run: ./tool/build_ipa.sh
+      - name: Renomear
+        run: |
+          VERSION="$(sed -n 's/^version: *\([^+]*\).*/\1/p' pubspec.yaml)"
+          mkdir -p dist
+          cp build/ipa/BrainW4llet-unsigned.ipa "dist/BrainW4llet-$VERSION-ios-unsigned.ipa"
+          (cd dist && shasum -a 256 ./*.ipa > ios.sha256 && cat ios.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios
           path: dist/*
           if-no-files-found: error
 

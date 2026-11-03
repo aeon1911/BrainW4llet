@@ -13,7 +13,10 @@ final class OnlineServices {
   OnlineServices(this.wallet)
     : endpoints = Endpoints.defaults(wallet.network),
       btcAccount = BtcAccount(wallet.btcAccountKey, wallet.network) {
-    esplora = EsploraClient(endpoints.btcEsplora, http);
+    esplora = FailoverEsplora([
+      for (final url in [endpoints.btcEsplora, ...endpoints.btcEsploraFallbacks])
+        EsploraClient(url, http),
+    ]);
     evm = EvmClient(
       rpc: endpoints.evmRpc,
       blockscout: endpoints.evmBlockscout,
@@ -33,7 +36,7 @@ final class OnlineServices {
   final Endpoints endpoints;
   final BtcAccount btcAccount;
   final HttpJson http = HttpJson();
-  late final EsploraClient esplora;
+  late final FailoverEsplora esplora;
   late final EvmClient evm;
   late final SolClient sol;
 

@@ -289,6 +289,12 @@ final class XmrWatcher {
         }
         state.scannedHeight = block.blockHeight;
         onProgress?.call(block.blockHeight, end);
+        // No Android o Dart roda na thread principal. O gerador da biblioteca
+        // processa cada bloco (conta pesada em curva elíptica) só com `await`
+        // internos, sem voltar ao laço de eventos; sem esta pausa, uma leva
+        // de blocos passa de 5 s sem o app responder ao toque e o Android
+        // mostra "o app não está respondendo" (ANR).
+        await Future<void>.delayed(Duration.zero);
         if (++processed % 200 == 0) {
           await _addOutputs(state, foundTxs);
           foundTxs.clear();
