@@ -25,7 +25,7 @@ dependencies:
   monero_dart: 1.7.0
   path_provider: 2.1.6
   # Gera o QR do endereço de recebimento (Dart puro, sem rede).
-  qr: 4.0.0
+  qr: 4.0.1
 
 dev_dependencies:
   flutter_test:
