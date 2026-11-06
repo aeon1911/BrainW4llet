@@ -366,6 +366,59 @@ void main() {
     expect(XmrSigner.review(request, seed).warnings, isNotEmpty);
   });
 
+  test('assinatura em isolate produz transação válida (mesma regra)', () async {
+    final input = _incoming(ours, _xmr, globalIndex: BigInt.from(10_000_000));
+    final amount = BigInt.from(250_000_000_000); // 0,25 XMR
+    final request = _request(
+      [_spendable(input)],
+      destination: destination,
+      amount: amount,
+    );
+    final seed = _secure(_ourSeed);
+    addTearDown(seed.dispose);
+
+    final review = await XmrSigner.reviewIsolated(request, seed);
+    expect(review.amount, amount);
+    expect(review.inputs, 1);
+    expect(review.inputsTotal, _xmr);
+    expect(review.warnings, isEmpty);
+
+    final signed = await XmrSigner.signIsolated(request, seed);
+    final tx = MoneroTransaction.deserialize(
+      BytesUtils.fromHexString(signed.txHex),
+    );
+    expect(tx.getTxHash(), signed.txHash);
+    expect(tx.vin, hasLength(1));
+    expect(tx.vout, hasLength(2));
+    expect(_received(tx, other), [amount]);
+    expect(_received(tx, ours), [review.change]);
+    expect(
+      signed.keyImages[BytesUtils.toHexString(
+        input.payment.output.outputPublicKey,
+      )],
+      BytesUtils.toHexString((tx.vin.single as TxinToKey).keyImage.keyImage),
+    );
+    // A seed original continua válida depois do isolate (não foi destruída).
+    expect(XmrSigner.review(request, seed).amount, amount);
+  });
+
+  test('key images em isolate conferem com a versão síncrona', () async {
+    final input = _incoming(ours, _xmr, globalIndex: BigInt.from(11_000_000));
+    final request = XmrKeyImageRequest(
+      network: _network,
+      knownOutputs: [
+        BytesUtils.toHexString(input.payment.serialize()),
+      ],
+    );
+    final seed = _secure(_ourSeed);
+    addTearDown(seed.dispose);
+
+    final sync = XmrSigner.keyImages(request, seed);
+    final isolated = await XmrSigner.keyImagesIsolated(request, seed);
+    expect(isolated.network, sync.network);
+    expect(isolated.keyImages, sync.keyImages);
+  });
+
   test('recompensa de mineração só desbloqueia com 60 confirmações', () {
     final watcher = XmrWatcher(
       address: ours.account.primaryAddress,

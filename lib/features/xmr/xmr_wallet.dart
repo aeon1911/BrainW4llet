@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:blockchain_utils/blockchain_utils.dart';
 import 'package:monero_dart/monero_dart.dart';
@@ -208,6 +209,9 @@ final class XmrWatcher {
   /// Margem ao estimar a altura de início pela data (1 dia de blocos).
   static const int restoreMarginBlocks = 720;
 
+  /// Blocos varridos por isolate de cada vez.
+  static const int scanChunkBlocks = 50;
+
   final String address;
   final String viewKeyHex;
   final WalletNetwork network;
@@ -256,6 +260,11 @@ final class XmrWatcher {
   }
 
   /// Varre do último ponto até o topo. [onProgress] recebe (atual, alvo).
+  ///
+  /// A varredura pesada (curva elíptica por bloco) roda em lotes de
+  /// [scanChunkBlocks] blocos num isolate separado: no Android o Dart roda
+  /// na thread principal e um bloco isolado pode passar de 5 s, o que o
+  /// Android trata como "o app não está respondendo" (ANR).
   Future<void> sync({
     void Function(int current, int target)? onProgress,
   }) async {
@@ -263,42 +272,57 @@ final class XmrWatcher {
     final tip = await currentHeight();
     final end = tip - 1;
     final known = {for (final o in state.outputs) o.keyImage: o}..remove(null);
-    final processor = DefaultMoneroBlockProcessor(
-      provider: _provider,
-      config: BlockProcessorConfig(
-        network: XmrKeys.networkFor(network),
-        unlocker: DefaultMoneroOutputUnlocker(accounts: [_account]),
-      ),
-    );
 
     final foundTxs = <String, int>{}; // txHash → altura
     var processed = 0;
     if (state.scannedHeight < end) {
-      await for (final block in processor.scanBlock(
-        state.scannedHeight + 1,
-        end,
-      )) {
-        for (final tx in block.txes) {
-          if (tx.unlockedOutputs.isNotEmpty) {
-            foundTxs[tx.txHash] = block.blockHeight;
-          }
+      final watchAddress = address;
+      final watchViewKeyHex = viewKeyHex;
+      final watchNetwork = network;
+      final watchNodeUrl = nodeUrl;
+      while (state.scannedHeight < end) {
+        final fromHeight = state.scannedHeight + 1;
+        final toHeight = fromHeight + scanChunkBlocks - 1 > end
+            ? end
+            : fromHeight + scanChunkBlocks - 1;
+        final knownImages = {for (final o in state.outputs) o.keyImage}
+          ..remove(null);
+        final knownImagesList = knownImages.cast<String>().toList();
+        final chunkAddress = watchAddress;
+        final chunkViewKeyHex = watchViewKeyHex;
+        final chunkNetwork = watchNetwork;
+        final chunkNodeUrl = watchNodeUrl;
+        final chunkFrom = fromHeight;
+        final chunkTo = toHeight;
+        final result = await Isolate.run(
+          () => scanXmrChunk(
+            address: chunkAddress,
+            viewKeyHex: chunkViewKeyHex,
+            network: chunkNetwork,
+            nodeUrl: chunkNodeUrl,
+            fromHeight: chunkFrom,
+            toHeight: chunkTo,
+            knownKeyImages: knownImagesList,
+          ),
+        );
+        for (final entry in result['foundTxs'].entries) {
+          foundTxs[entry.key as String] = entry.value as int;
         }
-        // Gastos detectados durante a varredura (key images já conhecidas).
-        for (final image in block.keyImages()) {
-          known[BytesUtils.toHexString(image.keyImage)]?.spent = true;
+        for (
+          final hex in (result['spentKeyImages'] as List).cast<String>()
+        ) {
+          known[hex]?.spent = true;
         }
-        state.scannedHeight = block.blockHeight;
-        onProgress?.call(block.blockHeight, end);
-        // No Android o Dart roda na thread principal. O gerador da biblioteca
-        // processa cada bloco (conta pesada em curva elíptica) só com `await`
-        // internos, sem voltar ao laço de eventos; sem esta pausa, uma leva
-        // de blocos passa de 5 s sem o app responder ao toque e o Android
-        // mostra "o app não está respondendo" (ANR).
-        await Future<void>.delayed(Duration.zero);
-        if (++processed % 200 == 0) {
+        state.scannedHeight = result['scannedHeight']! as int;
+        onProgress?.call(state.scannedHeight, end);
+        processed += toHeight - fromHeight + 1;
+        if (processed % 200 == 0) {
           await _addOutputs(state, foundTxs);
           foundTxs.clear();
           await store.save(state);
+        } else {
+          // Respira entre lotes para a UI continuar respondendo.
+          await Future<void>.delayed(Duration.zero);
         }
       }
     }
@@ -465,5 +489,59 @@ final class XmrWatcher {
     }
     await importKeyImages(signed.keyImages);
     return signed.txHash;
+  }
+}
+
+/// Varre um lote de blocos com a view key. Top-level para poder ser chamado
+/// num isolate pela [XmrWatcher.sync]. Só recebe dados simples (strings e
+/// inteiros), nunca a chave de gasto.
+Future<Map<String, Object?>> scanXmrChunk({
+  required String address,
+  required String viewKeyHex,
+  required WalletNetwork network,
+  required String nodeUrl,
+  required int fromHeight,
+  required int toHeight,
+  required List<String> knownKeyImages,
+}) async {
+  final http = HttpJson(timeout: const Duration(seconds: 90));
+  try {
+    final account = XmrKeys.keys(
+      XmrKeys.watchAccount(
+        address: address,
+        viewKeyHex: viewKeyHex,
+        network: network,
+      ),
+      network,
+    );
+    final provider = MoneroProvider(MoneroDaemonService(nodeUrl, http));
+    final processor = DefaultMoneroBlockProcessor(
+      provider: provider,
+      config: BlockProcessorConfig(
+        network: XmrKeys.networkFor(network),
+        unlocker: DefaultMoneroOutputUnlocker(accounts: [account]),
+      ),
+    );
+    final known = knownKeyImages.toSet();
+    final foundTxs = <String, int>{};
+    final spentKeyImages = <String>{};
+    await for (final block in processor.scanBlock(fromHeight, toHeight)) {
+      for (final tx in block.txes) {
+        if (tx.unlockedOutputs.isNotEmpty) {
+          foundTxs[tx.txHash] = block.blockHeight;
+        }
+      }
+      for (final image in block.keyImages()) {
+        final hex = BytesUtils.toHexString(image.keyImage);
+        if (known.contains(hex)) spentKeyImages.add(hex);
+      }
+    }
+    return {
+      'foundTxs': foundTxs,
+      'spentKeyImages': spentKeyImages.toList(),
+      'scannedHeight': toHeight,
+    };
+  } finally {
+    http.close();
   }
 }

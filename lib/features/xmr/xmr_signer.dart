@@ -2,6 +2,7 @@ import 'package:blockchain_utils/blockchain_utils.dart';
 import 'package:monero_dart/monero_dart.dart';
 import 'package:sodium/sodium_sumo.dart';
 
+import '../../core/security/sodium_runtime.dart';
 import '../network/wallet_network.dart';
 import '../transfer/transfer_document.dart';
 import 'xmr_keys.dart';
@@ -46,6 +47,11 @@ final class XmrReview {
 /// Lado frio do Monero: destrava só as saídas desta seed, calcula a taxa
 /// exata, assina (CLSAG + Bulletproofs+), confere a assinatura e devolve as
 /// key images. Nunca acessa a rede.
+///
+/// A assinatura (CLSAG + Bulletproofs+) é pesada e rodava na thread
+/// principal, o que podia deixar o Android sem resposta (ANR). Os métodos
+/// `*Isolated` rodam a mesma criptografia num isolate separado, com a seed
+/// transferida em memória protegida da libsodium — nunca como texto.
 abstract final class XmrSigner {
   static XmrReview review(XmrSignRequest request, SecureKey seed) =>
       _prepare(request, seed, build: false).$1;
@@ -61,6 +67,90 @@ abstract final class XmrSigner {
     );
   }
 
+  /// Revisão num isolate (para não travar a UI no Android).
+  static Future<XmrReview> reviewIsolated(
+    XmrSignRequest request,
+    SecureKey seed,
+  ) async {
+    final payload = request.encode();
+    final result = await SodiumRuntime.instance.runIsolated(
+      (keys, _) {
+        final copy = keys.single;
+        try {
+          final doc = TransferDocument.decode(payload) as XmrSignRequest;
+          final review = XmrSigner.review(doc, copy);
+          return {
+            'destination': review.destination,
+            'amount': review.amount.toString(),
+            'fee': review.fee.toString(),
+            'change': review.change.toString(),
+            'inputsTotal': review.inputsTotal.toString(),
+            'inputs': review.inputs,
+          };
+        } on Object catch (e) {
+          return {'error': _cleanError(e)};
+        } finally {
+          copy.dispose();
+        }
+      },
+      secureKeys: [seed],
+    );
+    if (result.containsKey('error')) {
+      throw XmrSignException(result['error']! as String);
+    }
+    return XmrReview(
+      destination: result['destination']! as String,
+      amount: BigInt.parse(result['amount']! as String),
+      fee: BigInt.parse(result['fee']! as String),
+      change: BigInt.parse(result['change']! as String),
+      inputsTotal: BigInt.parse(result['inputsTotal']! as String),
+      inputs: result['inputs']! as int,
+    );
+  }
+
+  /// Assinatura num isolate (para não travar a UI no Android). A seed é
+  /// transferida de forma protegida; o chamador segue dono da [SecureKey]
+  /// original (não é destruída aqui).
+  static Future<XmrSignedTransaction> signIsolated(
+    XmrSignRequest request,
+    SecureKey seed,
+  ) async {
+    final payload = request.encode();
+    final result = await SodiumRuntime.instance.runIsolated(
+      (keys, _) {
+        final copy = keys.single;
+        try {
+          final doc = TransferDocument.decode(payload) as XmrSignRequest;
+          final signed = XmrSigner.sign(doc, copy);
+          return {
+            'txHex': signed.txHex,
+            'txHash': signed.txHash,
+            'network': signed.network.name,
+            'keyImages': signed.keyImages,
+          };
+        } on Object catch (e) {
+          return {'error': _cleanError(e)};
+        } finally {
+          copy.dispose();
+        }
+      },
+      secureKeys: [seed],
+    );
+    if (result.containsKey('error')) {
+      throw XmrSignException(result['error']! as String);
+    }
+    return XmrSignedTransaction(
+      network: WalletNetwork.parse(result['network']),
+      txHex: result['txHex']! as String,
+      txHash: result['txHash']! as String,
+      keyImages: (result['keyImages']! as Map).cast<String, String>(),
+    );
+  }
+
+  static String _cleanError(Object e) => '$e'
+      .replaceFirst('XmrSignException: ', '')
+      .replaceFirst('FormatException: ', '');
+
   /// Só as key images (para a carteira online descobrir o que foi gasto).
   static XmrKeyImages keyImages(XmrKeyImageRequest request, SecureKey seed) =>
       seed.runUnlockedSync((bytes) {
@@ -73,6 +163,39 @@ abstract final class XmrSigner {
           keyImages: _keyImagesOf(request.knownOutputs, keys),
         );
       });
+
+  /// Key images num isolate (mesma razão da assinatura).
+  static Future<XmrKeyImages> keyImagesIsolated(
+    XmrKeyImageRequest request,
+    SecureKey seed,
+  ) async {
+    final payload = request.encode();
+    final result = await SodiumRuntime.instance.runIsolated(
+      (keys, _) {
+        final copy = keys.single;
+        try {
+          final doc = TransferDocument.decode(payload) as XmrKeyImageRequest;
+          final images = XmrSigner.keyImages(doc, copy);
+          return {
+            'network': images.network.name,
+            'keyImages': images.keyImages,
+          };
+        } on Object catch (e) {
+          return {'error': _cleanError(e)};
+        } finally {
+          copy.dispose();
+        }
+      },
+      secureKeys: [seed],
+    );
+    if (result.containsKey('error')) {
+      throw XmrSignException(result['error']! as String);
+    }
+    return XmrKeyImages(
+      network: WalletNetwork.parse(result['network']),
+      keyImages: (result['keyImages']! as Map).cast<String, String>(),
+    );
+  }
 
   static (XmrReview, MoneroRctTxBuilder?, Map<String, String>) _prepare(
     XmrSignRequest request,

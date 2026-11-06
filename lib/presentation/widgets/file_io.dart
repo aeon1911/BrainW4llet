@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io' show Platform;
+import 'dart:io' show FileSystemException, Platform;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -90,24 +90,82 @@ class ReadFailedDialog extends StatelessWidget {
   }
 }
 
+/// Diálogo mostrado quando o Android recusa a gravação. Público só para o
+/// teste (como [ReadFailedDialog]).
+class SaveFailedDialog extends StatelessWidget {
+  const SaveFailedDialog({super.key, required this.reason});
+
+  final String reason;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Não deu para salvar o arquivo'),
+      content: Text(
+        'O Android recusou a gravação ($reason). O arquivo não foi criado. '
+        'Libere espaço, escolha outro local ou tente de novo.',
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Entendi'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Mostra o diálogo de falha ao gravar. Chamado apenas quando [saveTextFile]
+/// falha, para que nenhuma tela fique sem mensagem.
+Future<void> showSaveFailedDialog(
+  BuildContext context,
+  Object error,
+) {
+  final reason = _saveErrorReason(error);
+  return showDialog<void>(
+    context: context,
+    builder: (_) => SaveFailedDialog(reason: reason),
+  );
+}
+
+String _saveErrorReason(Object error) => error is FormatException
+    ? error.message
+    : '$error'.replaceFirst('FormatException: ', '');
+
 /// Salva [content] onde o usuário escolher. Devolve o caminho (no Android, o
-/// endereço `content://` do documento), ou null se ele cancelar.
+/// endereço `content://` do documento), ou null se ele cancelar. Se o
+/// sistema recusar a gravação, lança [FormatException] com o motivo (nunca
+/// derruba o app com um `PlatformException` cru).
 Future<String?> saveTextFile(String suggestedName, String content) async {
   if (Platform.isAndroid) {
-    return _androidFiles.invokeMethod<String>('saveText', {
-      'name': suggestedName,
-      'content': content,
-    });
+    try {
+      return await _androidFiles.invokeMethod<String>('saveText', {
+        'name': suggestedName,
+        'content': content,
+      });
+    } on PlatformException catch (e) {
+      throw FormatException(
+        'Não foi possível salvar o arquivo: ${e.message ?? e.code}',
+      );
+    }
   }
   final location = await getSaveLocation(
     suggestedName: suggestedName,
     acceptedTypeGroups: const [_jsonGroup],
   );
   if (location == null) return null;
-  await XFile.fromData(
-    utf8.encode(content),
-    mimeType: 'application/json',
-    name: suggestedName,
-  ).saveTo(location.path);
+  try {
+    await XFile.fromData(
+      utf8.encode(content),
+      mimeType: 'application/json',
+      name: suggestedName,
+    ).saveTo(location.path);
+  } on FileSystemException catch (e) {
+    throw FormatException('Não foi possível salvar o arquivo: ${e.message}');
+  } on PlatformException catch (e) {
+    throw FormatException(
+      'Não foi possível salvar o arquivo: ${e.message ?? e.code}',
+    );
+  }
   return location.path;
 }

@@ -67,7 +67,13 @@ Future<void> _saveRequest(
   BuildContext context,
   TransferDocument request,
 ) async {
-  final path = await saveTextFile(request.suggestedFileName, request.encode());
+  final String? path;
+  try {
+    path = await saveTextFile(request.suggestedFileName, request.encode());
+  } on Object catch (e) {
+    if (context.mounted) await showSaveFailedDialog(context, e);
+    return;
+  }
   if (path == null || !context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
     const SnackBar(

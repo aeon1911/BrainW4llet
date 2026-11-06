@@ -39,7 +39,9 @@ final class PreparedSigning {
 
   /// Situações anormais: exigem confirmação explícita antes de assinar.
   final List<String> alerts;
-  final TransferDocument Function() sign;
+
+  /// Assina em isolate quando a criptografia é pesada (Monero).
+  final Future<TransferDocument> Function() sign;
 
   /// Valida o pedido e calcula tudo a partir da própria transação. Lança
   /// exceções com mensagem pronta para o usuário.
@@ -80,7 +82,7 @@ final class PreparedSigning {
         ),
       ],
       alerts: review.warnings,
-      sign: () => BtcSigner.sign(request, seed),
+      sign: () async => BtcSigner.sign(request, seed),
     );
   }
 
@@ -96,7 +98,7 @@ final class PreparedSigning {
         ReviewRow('Nonce', '${review.nonce}'),
       ],
       alerts: review.warnings,
-      sign: () => EvmSend.sign(request, seed),
+      sign: () async => EvmSend.sign(request, seed),
     );
   }
 
@@ -119,7 +121,7 @@ final class PreparedSigning {
           'Bulletproofs+). O arquivo assinado também leva as key images, para '
           'a carteira online saber o que foi gasto.',
       alerts: review.warnings,
-      sign: () => XmrSigner.sign(request, seed),
+      sign: () => XmrSigner.signIsolated(request, seed),
     );
   }
 
@@ -136,7 +138,7 @@ final class PreparedSigning {
             'gastas. Não permitem gastar nada.',
       ),
     ],
-    sign: () => XmrSigner.keyImages(request, seed),
+    sign: () => XmrSigner.keyImagesIsolated(request, seed),
   );
 
   static PreparedSigning _sol(SolSignRequest request, SecureKey seed) {
@@ -151,7 +153,7 @@ final class PreparedSigning {
       warning:
           'Transações Solana expiram em cerca de 1 minuto: assine e '
           'transmita logo. Se expirar, gere o pedido de novo.',
-      sign: () => SolSend.sign(request, seed),
+      sign: () async => SolSend.sign(request, seed),
     );
   }
 }
@@ -193,15 +195,21 @@ class _SignReviewScreenState extends State<SignReviewScreen> {
       _error = null;
     });
     try {
-      final signed = widget.prepared.sign();
+      final signed = await widget.prepared.sign();
       final path = await saveTextFile(
         signed.suggestedFileName,
         signed.encode(),
       );
       if (!mounted) return;
       if (path != null) Navigator.of(context).pop(path);
+    } on FormatException catch (e) {
+      if (mounted) setState(() => _error = e.message);
     } on Object catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) {
+        setState(
+          () => _error = '$e'.replaceFirst('FormatException: ', ''),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

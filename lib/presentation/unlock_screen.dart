@@ -166,12 +166,16 @@ class _UnlockScreenState extends State<UnlockScreen> {
 
   Future<void> _saveWatchOnly() async {
     final wallet = _wallet!;
-    final path = await saveTextFile(
-      'carteira-somente-leitura-${wallet.fingerprint}.json',
-      const JsonEncoderPretty().convert(wallet.toJson()),
-    );
-    if (path != null && mounted) {
-      _snack('Arquivo salvo. Abra-o na carteira online.');
+    try {
+      final path = await saveTextFile(
+        'carteira-somente-leitura-${wallet.fingerprint}.json',
+        const JsonEncoderPretty().convert(wallet.toJson()),
+      );
+      if (path != null && mounted) {
+        _snack('Arquivo salvo. Abra-o na carteira online.');
+      }
+    } on Object catch (e) {
+      if (mounted) await showSaveFailedDialog(context, e);
     }
   }
 

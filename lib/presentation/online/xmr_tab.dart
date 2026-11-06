@@ -103,12 +103,18 @@ class _XmrTabState extends State<XmrTab> with AutomaticKeepAliveClientMixin {
 
   Future<void> _exportKeyImageRequest() async {
     final request = _watcher!.keyImageRequest();
-    final path = await saveTextFile(
-      request.suggestedFileName,
-      request.encode(),
-    );
-    if (path != null) {
-      _snack('Pedido salvo. Abra no assinador frio e use "Assinar transação".');
+    try {
+      final path = await saveTextFile(
+        request.suggestedFileName,
+        request.encode(),
+      );
+      if (path != null && mounted) {
+        _snack(
+          'Pedido salvo. Abra no assinador frio e use "Assinar transação".',
+        );
+      }
+    } on Object catch (e) {
+      if (mounted) await showSaveFailedDialog(context, e);
     }
   }
 

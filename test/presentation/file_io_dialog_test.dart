@@ -32,33 +32,80 @@ Future<void> _open(WidgetTester tester, List<bool?> results) async {
 }
 
 void main() {
-  testWidgets('mostra o motivo da falha e não fala de pasta nenhuma', (
-    tester,
-  ) async {
-    await _open(tester, <bool?>[]);
+  group('ReadFailedDialog', () {
+    testWidgets('mostra o motivo da falha e não fala de pasta nenhuma', (
+      tester,
+    ) async {
+      await _open(tester, <bool?>[]);
 
-    expect(find.text('Não deu para ler o arquivo'), findsOneWidget);
-    expect(find.textContaining('NullPointerException'), findsOneWidget);
-    expect(find.textContaining('pasta'), findsNothing);
+      expect(find.text('Não deu para ler o arquivo'), findsOneWidget);
+      expect(find.textContaining('NullPointerException'), findsOneWidget);
+      expect(find.textContaining('pasta'), findsNothing);
+    });
+
+    testWidgets('Escolher de novo devolve true', (tester) async {
+      final results = <bool?>[];
+      await _open(tester, results);
+
+      await tester.tap(find.text('Escolher de novo'));
+      await tester.pumpAndSettle();
+
+      expect(results.single, true);
+    });
+
+    testWidgets('Cancelar não devolve nada', (tester) async {
+      final results = <bool?>[];
+      await _open(tester, results);
+
+      await tester.tap(find.text('Cancelar'));
+      await tester.pumpAndSettle();
+
+      expect(results.single, isNull);
+    });
   });
 
-  testWidgets('Escolher de novo devolve true', (tester) async {
-    final results = <bool?>[];
-    await _open(tester, results);
+  group('SaveFailedDialog', () {
+    Future<void> openSave(WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: FilledButton(
+                  onPressed: () => showSaveFailedDialog(
+                    context,
+                    const FormatException(
+                      'Não foi possível salvar o arquivo: sem espaço',
+                    ),
+                  ),
+                  child: const Text('salvar'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('salvar'));
+      await tester.pumpAndSettle();
+    }
 
-    await tester.tap(find.text('Escolher de novo'));
-    await tester.pumpAndSettle();
+    testWidgets('mostra o motivo e orienta a liberar espaço/outro local', (
+      tester,
+    ) async {
+      await openSave(tester);
 
-    expect(results.single, true);
-  });
+      expect(find.text('Não deu para salvar o arquivo'), findsOneWidget);
+      expect(find.textContaining('sem espaço'), findsOneWidget);
+      expect(find.textContaining('outro local'), findsOneWidget);
+    });
 
-  testWidgets('Cancelar não devolve nada', (tester) async {
-    final results = <bool?>[];
-    await _open(tester, results);
+    testWidgets('Entendi fecha o diálogo', (tester) async {
+      await openSave(tester);
 
-    await tester.tap(find.text('Cancelar'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Entendi'));
+      await tester.pumpAndSettle();
 
-    expect(results.single, isNull);
+      expect(find.text('Não deu para salvar o arquivo'), findsNothing);
+    });
   });
 }

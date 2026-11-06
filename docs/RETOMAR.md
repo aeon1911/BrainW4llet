@@ -25,12 +25,12 @@ siga em frente, sem ficar perguntando.
 
 ## Pendências, em ordem
 
-1. **Usuário validar no Waydroid** o APK mais recente (commit `39a6463`, hash do `base.apk` `7a186211…`): a aba Bitcoin carrega (a primeira consulta espera ~8 s pelo mempool.space falhar) e a varredura do Monero termina sem o aviso "o app não está respondendo". Se o Android ainda mostrar o aviso, é porque algum bloco isolado passa de 5 s: o caminho é varrer num isolate.
-2. **Mesclar o PR #2** quando o usuário confirmar. A descrição do PR não cita o job `ios` nem o roteiro da stagenet.
-3. Depois do merge, publicar `v0.1.1` (ver "Publicar uma versão nova").
+1. **Usuário validar no Waydroid** o APK do branch `fix/p0-xmr-isolates-save-error`: a aba Bitcoin carrega (a primeira consulta espera ~8 s pelo mempool.space falhar), a varredura do Monero e a assinatura no assinador terminam sem o aviso "o app não está respondendo". Nesta branch a varredura e a assinatura já rodam em isolates (ver itens 5); validar mesmo assim.
+2. **Mesclar o PR #2** quando o usuário confirmar, depois esta branch. A descrição do PR #2 não cita o job `ios` nem o roteiro da stagenet.
+3. Depois dos merges, publicar `v0.1.1` (ver "Publicar uma versão nova").
 4. **Primeiro envio real de Monero na stagenet** ([roteiro](MONERO_STAGENET.md)). Use a rede **Teste**: o arquivo `carteira-somente-leitura-0F98-BE0A.json` que o usuário tem no Waydroid é de mainnet (o `tentativa.json`, criado depois, não foi conferido). Depois disso o release pode deixar de ser pré-lançamento.
-5. **Risco conhecido:** a assinatura Monero no assinador (CLSAG + Bulletproofs+) é pesada e roda na thread principal. No Android pode dar o mesmo ANR; o caminho é assinar num isolate (cuidado com a seed: ela vive em memória protegida da libsodium).
-6. `saveTextFile` em `lib/presentation/widgets/file_io.dart` lança `PlatformException` no Android e nenhuma das seis telas que salvam trata isso: uma falha ao gravar continua sem mensagem.
+5. **Corrigido nesta branch:** a assinatura Monero (CLSAG + Bulletproofs+) agora roda num isolate via `sodium.runIsolated` (`XmrSigner.signIsolated`/`reviewIsolated`/`keyImagesIsolated`, com `PreparedSigning.sign` assíncrono), com a seed transferida em memória protegida — nunca como texto. A varredura também foi a um isolate, em lotes de 50 blocos (`scanXmrChunk` + `XmrWatcher.sync`). A assinatura ainda precisa de validação real na stagenet (item 4).
+6. **Corrigido nesta branch:** `saveTextFile` (`lib/presentation/widgets/file_io.dart`) agora lança `FormatException` com mensagem clara em vez de `PlatformException` cru, e há `SaveFailedDialog`/`showSaveFailedDialog` usado em todas as telas que salvam (assinador, revisão, pedidos BTC/ETH/SOL, Monero).
 7. **iOS:** o artefato `ios` do CI é um IPA sem assinatura (`BrainW4llet-0.1.0-ios-unsigned.ipa`). Nunca foi instalado num iPhone. O usuário assina com o Apple ID pelo SideStore/AltStore (certificado de 7 dias). Assinar no CI exigiria certificado e perfil nos secrets do GitHub; o usuário não deu isso.
 8. Ideias para depois: subendereços Monero, tokens ERC-20/SPL, transferência por QR, durable nonce na Solana, Tor e nó próprio.
 
