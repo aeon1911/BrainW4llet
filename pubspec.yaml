@@ -15,14 +15,14 @@ dependencies:
   # Argon2id, CSPRNG e memória protegida (SecureKey).
   sodium: 4.1.2
   # BIP-39/32/44, secp256k1, endereços. Dart puro, sem dependências.
-  blockchain_utils: 7.1.0
+  blockchain_utils: 8.0.1
   # Decomposição Unicode (NFKD/NFC) para normalização das respostas.
   unorm_dart: 0.3.3
   meta: ^1.15.0
-  bitcoin_base: 7.3.0
-  on_chain: 8.1.0
+  bitcoin_base: 8.0.0
+  on_chain: 9.0.2
   file_selector: 1.1.0
-  monero_dart: 1.7.0
+  monero_dart: 2.0.0
   path_provider: 2.1.6
   # Gera o QR do endereço de recebimento (Dart puro, sem rede).
   qr: 4.0.0
